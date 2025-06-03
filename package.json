@@ -1,0 +1,50 @@
+{
+  "name": "python-collaboration-platform",
+  "version": "2.1.0",
+  "description": "Python協作學習平台 - 支援多人即時協作編程和AI輔助教學",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "server": "node server.js",
+    "server-dev": "nodemon server.js",
+    "build": "echo 'Build completed successfully'",
+    "postinstall": "echo 'Dependencies installed successfully'",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clean": "node -e \"console.log('🧹 清理備份文件...'); const fs = require('fs'); const path = require('path'); const files = fs.readdirSync('.'); files.filter(f => f.startsWith('data_backup_')).forEach(f => { fs.unlinkSync(f); console.log('🗑️ 已刪除:', f); }); console.log('✅ 清理完成');\"",
+    "backup": "node -e \"const fs = require('fs'); const src = 'data_backup.json'; if(fs.existsSync(src)) { const dest = 'manual_backup_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json'; fs.copyFileSync(src, dest); console.log('💾 手動備份已創建:', dest); } else { console.log('❌ 找不到備份文件'); }\""
+  },
+  "keywords": [
+    "python",
+    "collaboration",
+    "education",
+    "websocket",
+    "coding",
+    "teaching",
+    "real-time",
+    "ai-assistant",
+    "zeabur"
+  ],
+  "author": "Python Collaboration Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.14.1",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/js0980420/python-collaboration.git"
+  },
+  "bugs": {
+    "url": "https://github.com/js0980420/python-collaboration/issues"
+  },
+  "homepage": "https://github.com/js0980420/python-collaboration#readme"
+}

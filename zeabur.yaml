@@ -1,0 +1,33 @@
+services:
+  - name: python-collaboration-platform
+    source:
+      type: git
+    plan: starter
+    environment:
+      NODE_ENV: production
+      MAX_CONCURRENT_USERS: 50
+      MAX_ROOMS: 12
+      MAX_USERS_PER_ROOM: 4
+      WEBSOCKET_TIMEOUT: 300000
+      AUTO_SAVE_INTERVAL: 180000
+      CLEANUP_INTERVAL: 300000
+      NODE_OPTIONS: "--max-old-space-size=384"
+    build:
+      commands:
+        - npm install --production --no-optional
+    start:
+      command: npm start
+    port: 8080
+    health_check:
+      path: /api/status
+      timeout_seconds: 30
+      interval_seconds: 60
+    resources:
+      memory: "512Mi"
+      cpu: "0.5"
+    
+databases:
+  - name: mysql-db
+    type: mysql
+    version: "8.0"
+    plan: free 
