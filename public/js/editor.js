@@ -219,7 +219,7 @@ class EditorManager {
         wsManager.sendMessage({
             type: 'save_code',
             code: code,
-            name: customName // 發送名稱到服務器
+            saveName: customName // 修改為 saveName 以匹配後端
         });
 
         UI.showSuccessToast(`代碼已保存: ${customName}`);
@@ -553,32 +553,150 @@ class EditorManager {
 
     // 清除輸出
     clearOutput() {
-        const outputContent = document.getElementById('outputContent');
-        outputContent.innerHTML = '';
+        const outputElement = document.getElementById('codeOutput');
+        if (outputElement) {
+            outputElement.style.display = 'none';
+            document.getElementById('outputContent').innerHTML = '';
+        }
+    }
+
+    // 複製代碼到剪貼簿
+    copyCode() {
+        const code = this.editor.getValue();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            // 現代瀏覽器支援 Clipboard API
+            navigator.clipboard.writeText(code).then(() => {
+                UI.showSuccessToast('代碼已複製到剪貼簿');
+            }).catch(() => {
+                this.fallbackCopy(code);
+            });
+        } else {
+            // 回退到傳統方法
+            this.fallbackCopy(code);
+        }
+    }
+
+    // 回退複製方法
+    fallbackCopy(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
         
-        const outputDiv = document.getElementById('codeOutput');
-        outputDiv.style.display = 'none';
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                UI.showSuccessToast('代碼已複製到剪貼簿');
+            } else {
+                UI.showErrorToast('複製失敗，請手動複製');
+            }
+        } catch (err) {
+            console.error('複製失敗:', err);
+            UI.showErrorToast('複製失敗，請手動複製');
+        }
+        
+        document.body.removeChild(textArea);
+    }
+
+    // 下載代碼為 .py 檔案
+    downloadCode() {
+        const code = this.editor.getValue();
+        const filename = prompt('請輸入檔案名稱 (不需要 .py 副檔名):', 'my_python_code') || 'my_python_code';
+        
+        const blob = new Blob([code], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.py`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        UI.showSuccessToast(`檔案 "${filename}.py" 已下載`);
+    }
+
+    // 觸發文件導入
+    importCode() {
+        const fileInput = document.getElementById('file-import');
+        if (fileInput) {
+            fileInput.click();
+        }
+    }
+
+    // 處理文件導入
+    handleFileImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        // 檢查文件類型
+        const fileName = file.name.toLowerCase();
+        const validExtensions = ['.py', '.txt'];
+        const isValidFile = validExtensions.some(ext => fileName.endsWith(ext)) || 
+                           file.type === 'text/plain' || 
+                           file.type === 'text/x-python';
+        
+        if (!isValidFile) {
+            UI.showErrorToast('只支援 .py 和 .txt 檔案');
+            return;
+        }
+        
+        // 檢查文件大小 (1MB 限制)
+        if (file.size > 1024 * 1024) {
+            UI.showErrorToast('檔案大小不能超過 1MB');
+            return;
+        }
+        
+        // 檢查是否需要覆蓋現有內容
+        if (this.editor.getValue().trim()) {
+            if (!confirm('當前編輯器有內容，是否要覆蓋？')) {
+                // 清除文件輸入，允許重新選擇同一文件
+                event.target.value = '';
+                return;
+            }
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            this.editor.setValue(e.target.result);
+            UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
+            // 清除文件輸入
+            event.target.value = '';
+        };
+        reader.onerror = () => {
+            UI.showErrorToast('檔案讀取失敗');
+            event.target.value = '';
+        };
+        reader.readAsText(file);
     }
 
     // 設置代碼
     setCode(code) {
-        this.editor.setValue(code);
+        if (this.editor) {
+            this.editor.setValue(code);
+        }
     }
 
     // 獲取代碼
     getCode() {
-        return this.editor.getValue();
+        return this.editor ? this.editor.getValue() : '';
     }
 
-    // 設置版本
+    // 設置版本號（移除版本號顯示功能）
     setVersion(version) {
         this.codeVersion = version;
-        this.updateVersionDisplay();
+        // 註釋掉版本號顯示功能
+        // this.updateVersionDisplay();
     }
 
-    // 更新版本顯示
+    // 更新版本號顯示（移除此功能）
     updateVersionDisplay() {
-        document.getElementById('codeVersion').textContent = `版本: ${this.codeVersion}`;
+        // 註釋掉版本號顯示功能
+        // const versionElement = document.getElementById('codeVersion');
+        // if (versionElement) {
+        //     versionElement.textContent = `版本: ${this.codeVersion}`;
+        // }
     }
 
     // 移除協作用戶
