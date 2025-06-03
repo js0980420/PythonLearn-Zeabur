@@ -56,10 +56,18 @@ class AIAssistantManager {
         this.isFirstPrompt = false; // 用戶已進行操作
         this.isProcessing = true; // 設置處理中狀態
 
-        // 獲取當前代碼
+        // 獲取當前代碼 - 添加詳細調試
+        console.log('🔍 [AI Debug] 開始獲取編輯器代碼...');
+        console.log('🔍 [AI Debug] Editor對象:', Editor);
+        console.log('🔍 [AI Debug] Editor.editor:', Editor ? Editor.editor : 'Editor未定義');
+        
         const code = Editor.getCode();
+        console.log('🔍 [AI Debug] 獲取到的代碼:', code);
+        console.log('🔍 [AI Debug] 代碼長度:', code ? code.length : 'code為null/undefined');
+        console.log('🔍 [AI Debug] 代碼類型:', typeof code);
         
         if (!code || code.trim() === '') {
+            console.log('⚠️ [AI Debug] 代碼為空，顯示警告訊息');
             this.showResponse(`
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle"></i>
@@ -101,6 +109,7 @@ class AIAssistantManager {
         }
 
         console.log(`🤖 發送AI請求: ${apiAction}, RequestID: ${requestId}`);
+        console.log('🔍 [AI Debug] 發送的代碼內容:', code);
 
         // 發送AI請求到服務器
         wsManager.sendMessage({

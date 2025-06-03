@@ -1425,8 +1425,13 @@ async function handleAIRequest(userId, message) {
         return;
     }
     
-    const { action, code, requestId } = message;
+    // 修復：從 message.data.code 中提取代碼，而不是 message.code
+    const { action, requestId, data } = message;
+    const code = data ? data.code : null;
+    
     console.log(`🤖 收到 AI 請求 - 用戶: ${user.name}, 動作: ${action}, 代碼長度: ${code ? code.length : 0}, RequestID: ${requestId || 'N/A'}`);
+    console.log(`🔍 [Server Debug] 消息結構:`, { action, requestId, data });
+    console.log(`🔍 [Server Debug] 提取的代碼:`, code ? `"${code.substring(0, 50)}${code.length > 50 ? '...' : ''}"` : 'null/undefined');
     
     if (!aiConfig.enabled || !aiConfig.openai_api_key) {
         user.ws.send(JSON.stringify({
@@ -1557,15 +1562,34 @@ async function analyzeCode(code) {
         });
         
         if (!response.ok) {
-            throw new Error(`OpenAI API錯誤: ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
+            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
         }
         
         const data = await response.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('OpenAI API 回應格式異常');
+        }
+        
         return data.choices[0].message.content;
         
     } catch (error) {
-        console.error('AI分析錯誤:', error);
-        return '抱歉，AI分析功能暫時無法使用。請檢查網路連接或稍後再試。';
+        console.error('AI分析錯誤:', error.message);
+        
+        // 根據錯誤類型提供不同的回應
+        if (error.message.includes('401')) {
+            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
+        } else if (error.message.includes('429')) {
+            return '⏰ API請求頻率過高，請稍後再試。';
+        } else if (error.message.includes('quota')) {
+            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            return '🌐 網路連接問題，請檢查網路連接後重試。';
+        } else {
+            return '😅 抱歉，AI分析功能暫時無法使用。請稍後再試或聯繫管理員。';
+        }
     }
 }
 
@@ -1645,11 +1669,33 @@ async function debugCode(code) {
             })
         });
         
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
+            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+        }
+        
         const data = await response.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('OpenAI API 回應格式異常');
+        }
+        
         return data.choices[0].message.content;
         
     } catch (error) {
-        return '除錯功能暫時無法使用。';
+        console.error('AI除錯功能錯誤:', error.message);
+        
+        // 根據錯誤類型提供不同的回應
+        if (error.message.includes('401')) {
+            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
+        } else if (error.message.includes('429')) {
+            return '⏰ API請求頻率過高，請稍後再試。';
+        } else if (error.message.includes('quota')) {
+            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
+        } else {
+            return '😅 抱歉，AI除錯功能暫時無法使用。請檢查網路連接或稍後再試。';
+        }
     }
 }
 
@@ -1687,11 +1733,33 @@ async function improveCode(code) {
             })
         });
         
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
+            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+        }
+        
         const data = await response.json();
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('OpenAI API 回應格式異常');
+        }
+        
         return data.choices[0].message.content;
         
     } catch (error) {
-        return '改進建議功能暫時無法使用。';
+        console.error('AI改進建議錯誤:', error.message);
+        
+        // 根據錯誤類型提供不同的回應
+        if (error.message.includes('401')) {
+            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
+        } else if (error.message.includes('429')) {
+            return '⏰ API請求頻率過高，請稍後再試。';
+        } else if (error.message.includes('quota')) {
+            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
+        } else {
+            return '😅 抱歉，AI改進建議功能暫時無法使用。請稍後再試。';
+        }
     }
 }
 

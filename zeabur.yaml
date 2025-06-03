@@ -12,6 +12,12 @@ services:
       AUTO_SAVE_INTERVAL: 180000
       CLEANUP_INTERVAL: 300000
       NODE_OPTIONS: "--max-old-space-size=384"
+      # OpenAI AI助教配置 (需要在Zeabur控制台設定實際值)
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: gpt-3.5-turbo
+      OPENAI_MAX_TOKENS: 1000
+      OPENAI_TEMPERATURE: 0.3
+      OPENAI_TIMEOUT: 30000
     build:
       commands:
         - npm install --production --no-optional
