@@ -1429,12 +1429,15 @@ async function handleAIRequest(userId, message) {
         // 根據動作類型調用對應的 AI 函數
         switch (action) {
             case 'explain_code':
+            case 'analyze':        // 前端別名映射
                 response = await analyzeCode(code);
                 break;
             case 'check_errors':
                 response = await debugCode(code);
                 break;
             case 'improve_code':
+            case 'suggest':        // 前端別名映射
+            case 'improvement_tips': // 前端別名映射
                 response = await improveCode(code);
                 break;
             case 'collaboration_guide':
