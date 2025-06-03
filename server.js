@@ -713,7 +713,7 @@ async function handleJoinRoom(userId, roomId, userName) { // 將函數改為異�
         user.dbUserId = userId;
         console.log(`🔄 本地模式：用戶 ${userName} 使用 WebSocket ID ${userId} 作為模擬數據庫ID`);
     }
-
+    
     // 創建房間（如果不存在）
     if (!rooms.has(roomId)) {
         try {
@@ -937,7 +937,7 @@ async function handleCodeChange(userId, message) {
                     'INSERT INTO code_history (room_id, user_id, code_content, version, save_name) VALUES (?, ?, ?, ?, ?)',
                     [user.roomId, user.dbUserId, code, room.version, saveName || null]
                 );
-                
+    
                 console.log(`✅ 代碼已保存到數據庫: 房間 ${user.roomId}, 版本 ${room.version}, 用戶 ${user.name}`);
             } catch (error) {
                 console.error(`❌ 保存代碼到數據庫失敗:`, error.message);
@@ -1329,12 +1329,28 @@ function executePythonCode(code, callback) {
                 
                 if (exitCode === 0) {
                     // 執行成功
-                    const result = output.trim() || '程式執行完成（無輸出）';
-                    console.log(`✅ 執行成功: ${result}`);
-                    callback({
-                        success: true,
-                        output: result
-                    });
+                    if (output.trim()) {
+                        // 有輸出內容
+                        console.log(`✅ 執行成功: ${output.trim()}`);
+                        callback({
+                            success: true,
+                            output: output.trim()
+                        });
+                    } else {
+                        // 無輸出內容，提供說明
+                        const helpMessage = `程式執行完成（無輸出）
+💡 提示：如果想要看到輸出結果，可以嘗試：
+• 使用 print() 函數：print("Hello World")
+• 顯示變數值：print(變數名稱)
+• 顯示計算結果：print(5 + 3)
+• 列印內容：print("您的訊息")`;
+                        
+                        console.log(`✅ 執行成功但無輸出，已提供幫助說明`);
+                        callback({
+                            success: true,
+                            output: helpMessage
+                        });
+                    }
                 } else {
                     // 執行失敗 - 處理錯誤信息，將臨時文件路徑替換為友好的信息
                     let error = errorOutput.trim() || `程式執行失敗（退出代碼: ${exitCode}）`;
@@ -1409,16 +1425,31 @@ async function handleAIRequest(userId, message) {
         return;
     }
     
-    const { action, code } = message;
-    console.log(`🤖 收到 AI 請求 - 用戶: ${user.name}, 動作: ${action}, 代碼長度: ${code ? code.length : 0}`);
+    const { action, code, requestId } = message;
+    console.log(`🤖 收到 AI 請求 - 用戶: ${user.name}, 動作: ${action}, 代碼長度: ${code ? code.length : 0}, RequestID: ${requestId || 'N/A'}`);
     
     if (!aiConfig.enabled || !aiConfig.openai_api_key) {
         user.ws.send(JSON.stringify({
             type: 'ai_response',
             action: action,
-            response: '🚫 AI 助教功能未啟用或 API 密鑰未設定',
+            requestId: requestId,
+            response: '🚫 AI 助教功能未啟用或 API 密鑰未設定。請聯繫管理員配置 OpenAI API 密鑰。',
             error: 'ai_disabled'
         }));
+        console.log(`⚠️ AI功能停用 - 用戶: ${user.name}, 原因: ${!aiConfig.enabled ? 'AI功能未啟用' : 'API密鑰未設定'}`);
+        return;
+    }
+    
+    // 檢查代碼內容
+    if (!code || code.trim() === '') {
+        user.ws.send(JSON.stringify({
+            type: 'ai_response',
+            action: action,
+            requestId: requestId,
+            response: '📝 請先在編輯器中輸入一些 Python 程式碼，然後再使用 AI 助教功能進行分析。',
+            error: 'empty_code'
+        }));
+        console.log(`⚠️ 代碼為空 - 用戶: ${user.name}, 動作: ${action}`);
         return;
     }
     
@@ -1429,22 +1460,27 @@ async function handleAIRequest(userId, message) {
         // 根據動作類型調用對應的 AI 函數
         switch (action) {
             case 'explain_code':
-            case 'analyze':        // 前端別名映射
+            case 'analyze':        // 前端別名映射 - 解釋程式
                 response = await analyzeCode(code);
                 break;
             case 'check_errors':
+            case 'check':          // 前端別名映射 - 檢查錯誤
                 response = await debugCode(code);
                 break;
             case 'improve_code':
-            case 'suggest':        // 前端別名映射
+            case 'suggest':        // 前端別名映射 - 改進建議
             case 'improvement_tips': // 前端別名映射
                 response = await improveCode(code);
+                break;
+            case 'conflict_resolution':
+            case 'resolve':        // 前端別名映射 - 衝突協助
+                response = await analyzeConflict({ userCode: code, serverCode: '', userVersion: 0, serverVersion: 0, conflictUser: user.name, roomId: user.roomId });
                 break;
             case 'collaboration_guide':
                 response = await guideCollaboration(code, { userName: user.name, roomId: user.roomId });
                 break;
             default:
-                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors)、改進建議(improve_code/suggest)、協作指導(collaboration_guide)`;
+                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors/check)、改進建議(improve_code/suggest)、衝突協助(conflict_resolution/resolve)、協作指導(collaboration_guide)`;
                 error = 'unknown_action';
         }
         
@@ -1469,7 +1505,7 @@ async function handleAIRequest(userId, message) {
         
     } catch (err) {
         console.error(`❌ AI 請求處理失敗 - 用戶: ${user.name}, 動作: ${action}, 錯誤: ${err.message}`);
-        response = '😅 抱歉，AI 助教暫時無法處理您的請求，請稍後再試。';
+        response = '😅 抱歉，AI 助教暫時無法處理您的請求。請檢查網路連接或稍後再試。如果問題持續，請聯繫管理員。';
         error = 'ai_processing_failed';
     }
     
@@ -1477,6 +1513,7 @@ async function handleAIRequest(userId, message) {
     user.ws.send(JSON.stringify({
         type: 'ai_response',
         action: action,
+        requestId: requestId,
         response: response,
         error: error,
         timestamp: Date.now()

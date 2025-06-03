@@ -26,8 +26,8 @@ class WebSocketManager {
         
         if (isLocalhost) {
             // 本地開發環境：使用當前主機
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
             wsUrl = `${protocol}//${host}`;
             console.log('🏠 檢測到本地開發環境');
         } else {
