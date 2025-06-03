@@ -129,10 +129,13 @@
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5><i class="fas fa-code"></i> 協作編輯器</h5>
                             <div>
-                                <span class="badge bg-info" id="codeVersion">版本: 0</span>
-                                <div class="btn-group ms-2" role="group">
+                                <!-- 第一組：保存、載入、運行 -->
+                                <div class="btn-group me-2" role="group">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="globalSaveCode()">
+                                        <i class="fas fa-save"></i> 保存
+                                    </button>
                                     <button class="btn btn-outline-secondary btn-sm" type="button" onclick="globalLoadCode('latest')">
-                                        <i class="fas fa-download"></i> 載入
+                                        <i class="fas fa-sync-alt"></i> 載入
                                     </button>
                                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" id="loadDropdownBtn">
                                         <span class="visually-hidden">Toggle Dropdown</span>
@@ -146,12 +149,39 @@
                                         <li><h6 class="dropdown-header">歷史版本</h6></li>
                                         <li id="historyEmptyMessage"><span class="dropdown-item-text text-muted">無歷史版本</span></li>
                                     </ul>
+                                    <button class="btn btn-outline-success btn-sm" onclick="globalRunCode()">
+                                        <i class="fas fa-play"></i> 運行
+                                    </button>
                                 </div>
-                                <button class="btn btn-outline-primary btn-sm ms-2" onclick="globalSaveCode()"><i class="fas fa-save"></i> 保存</button>
-                                <button class="btn btn-outline-success btn-sm ms-2" onclick="globalRunCode()"><i class="fas fa-play"></i> 運行</button>
+                                
+                                <!-- 第二組：複製 -->
+                                <div class="btn-group me-2" role="group">
+                                    <button class="btn btn-primary btn-sm" onclick="globalCopyCode()">
+                                        <i class="fas fa-copy"></i> 複製
+                                    </button>
+                                </div>
+                                
+                                <!-- 第三組：更多(下載、導入) -->
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-outline-info btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="moreOptionsBtn">
+                                        <i class="fas fa-ellipsis-h"></i> 更多
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><h6 class="dropdown-header">檔案操作</h6></li>
+                                        <li><a class="dropdown-item" href="#" onclick="globalDownloadCode()">
+                                            <i class="fas fa-download text-primary"></i> 下載 .py 檔案
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="globalImportCode()">
+                                            <i class="fas fa-upload text-success"></i> 導入檔案
+                                        </a></li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
-                        <div id="editorContainer"><textarea id="codeEditor"></textarea></div>
+                        <div id="editorContainer">
+                            <textarea id="codeEditor"></textarea>
+                            <input type="file" id="file-import" accept=".py,.txt" style="display: none;" onchange="globalHandleFileImport(event)">
+                        </div>
                         <div id="codeOutput" class="mt-3" style="display: none;">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6><i class="fas fa-terminal"></i> 運行結果</h6>
@@ -256,6 +286,12 @@
         function globalAskAIForConflictHelp() { if(ConflictResolver) ConflictResolver.requestAIAnalysis(); else console.error("ConflictResolver not ready"); }
         function globalOpenTeacherDashboard() { window.open('/teacher', '_blank'); }
         function globalShowTutorial() { if(UI) UI.showTutorial(); else console.error("UI not ready"); }
+        
+        // 新增的檔案操作功能
+        function globalCopyCode() { if(Editor) Editor.copyCode(); else console.error("Editor not ready"); }
+        function globalDownloadCode() { if(Editor) Editor.downloadCode(); else console.error("Editor not ready"); }
+        function globalImportCode() { if(Editor) Editor.importCode(); else console.error("Editor not ready"); }
+        function globalHandleFileImport(event) { if(Editor) Editor.handleFileImport(event); else console.error("Editor not ready"); }
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 DOMContentLoaded V7 - 功能恢復版');
