@@ -1429,19 +1429,27 @@ async function handleAIRequest(userId, message) {
         // 根據動作類型調用對應的 AI 函數
         switch (action) {
             case 'explain_code':
+            case 'analyze':        // 前端別名映射 - 解釋程式
                 response = await analyzeCode(code);
                 break;
             case 'check_errors':
+            case 'check':          // 前端別名映射 - 檢查錯誤
                 response = await debugCode(code);
                 break;
             case 'improve_code':
+            case 'suggest':        // 前端別名映射 - 改進建議
+            case 'improvement_tips': // 前端別名映射
                 response = await improveCode(code);
+                break;
+            case 'conflict_resolution':
+            case 'resolve':        // 前端別名映射 - 衝突協助
+                response = await analyzeConflict({ userCode: code, serverCode: '', userVersion: 0, serverVersion: 0, conflictUser: user.name, roomId: user.roomId });
                 break;
             case 'collaboration_guide':
                 response = await guideCollaboration(code, { userName: user.name, roomId: user.roomId });
                 break;
             default:
-                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors)、改進建議(improve_code/suggest)、協作指導(collaboration_guide)`;
+                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors/check)、改進建議(improve_code/suggest)、衝突協助(conflict_resolution/resolve)、協作指導(collaboration_guide)`;
                 error = 'unknown_action';
         }
         
