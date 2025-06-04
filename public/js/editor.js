@@ -895,15 +895,103 @@ class EditorManager {
                 // 🔧 修復：將歷史記錄保存到實例變量
                 this.codeHistory = history;
                 this.updateHistoryUI();
-                console.log(`📂 成功載入歷史記錄，共 ${history.length} 個版本`);
+                console.log(`📂 成功載入本地歷史記錄，共 ${history.length} 個版本`);
+                
+                // 🆕 嘗試從服務器同步歷史記錄
+                this.syncHistoryWithServer();
             } else {
-                console.log('📂 沒有找到歷史記錄');
+                console.log('📂 沒有找到本地歷史記錄');
                 this.codeHistory = []; // 初始化空陣列
+                
+                // 🆕 嘗試從服務器載入歷史記錄
+                this.loadHistoryFromServer();
             }
         } catch (error) {
             console.error('❌ 載入歷史記錄失敗:', error);
             this.codeHistory = []; // 初始化空陣列
+            
+            // 🆕 出錯時也嘗試從服務器載入
+            this.loadHistoryFromServer();
         }
+    }
+
+    // 🆕 從服務器載入歷史記錄
+    loadHistoryFromServer() {
+        if (!wsManager.isConnected() || !wsManager.currentRoom) {
+            console.log('📡 WebSocket未連接或未加入房間，跳過服務器歷史記錄載入');
+            return;
+        }
+        
+        console.log('📡 嘗試從服務器載入歷史記錄...');
+        wsManager.sendMessage({
+            type: 'load_history',
+            roomId: wsManager.currentRoom
+        });
+    }
+
+    // 🆕 與服務器同步歷史記錄
+    syncHistoryWithServer() {
+        if (!wsManager.isConnected() || !wsManager.currentRoom) {
+            console.log('📡 WebSocket未連接或未加入房間，跳過歷史記錄同步');
+            return;
+        }
+        
+        console.log('🔄 與服務器同步歷史記錄...');
+        
+        // 發送當前本地歷史記錄的摘要到服務器
+        const localSummary = this.codeHistory.slice(0, 5).map(item => ({
+            timestamp: item.timestamp,
+            name: item.name,
+            codeLength: (item.code || '').length
+        }));
+        
+        wsManager.sendMessage({
+            type: 'sync_history',
+            roomId: wsManager.currentRoom,
+            localHistory: localSummary
+        });
+    }
+
+    // 🆕 處理服務器歷史記錄響應
+    handleServerHistory(historyData) {
+        console.log('📨 收到服務器歷史記錄:', historyData);
+        
+        if (historyData && historyData.length > 0) {
+            // 合併本地和服務器歷史記錄，去重
+            const mergedHistory = this.mergeHistory(this.codeHistory, historyData);
+            this.codeHistory = mergedHistory;
+            
+            // 保存到本地存儲
+            localStorage.setItem('codeHistory', JSON.stringify(this.codeHistory));
+            
+            // 更新UI
+            this.updateHistoryUI();
+            
+            console.log(`✅ 歷史記錄已同步，共 ${this.codeHistory.length} 個版本`);
+        }
+    }
+
+    // 🆕 合併歷史記錄並去重
+    mergeHistory(localHistory, serverHistory) {
+        const merged = [...localHistory];
+        
+        serverHistory.forEach(serverItem => {
+            // 檢查是否已存在（基於時間戳和名稱）
+            const exists = merged.some(localItem => 
+                localItem.timestamp === serverItem.timestamp &&
+                localItem.name === serverItem.name
+            );
+            
+            if (!exists) {
+                merged.push(serverItem);
+            }
+        });
+        
+        // 按時間戳降序排序（最新的在前）
+        merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // 限制最大數量
+        return merged.slice(0, this.maxHistorySize);
     }
 
     // 更新歷史記錄 UI - 修復為下拉菜單形式

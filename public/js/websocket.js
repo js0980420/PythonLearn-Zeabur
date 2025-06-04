@@ -10,6 +10,8 @@ class WebSocketManager {
         this.messageQueue = [];
         this.heartbeatInterval = null;
         this.lastHeartbeat = 0;
+        this.isConnected = false;
+        this.retryDelay = 1000; // 重置重連延遲
     }
 
     // 檢查連接狀態
@@ -52,27 +54,27 @@ class WebSocketManager {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
-                console.log('✅ WebSocket 連接成功到服務器!');
-                console.log(`📍 連接地址: ${wsUrl}`);
+                console.log('🔌 WebSocket 連接已打開');
+                this.isConnected = true;
                 this.reconnectAttempts = 0;
+                this.retryDelay = 1000; // 重置重連延遲
                 
-                // 啟動心跳
-                this.startHeartbeat();
-                
-                // 發送加入房間請求
-                this.sendMessage({
-                    type: 'join_room',
-                    room: roomName,
-                    userName: userName
-                });
-
-                // 處理消息隊列
-                this.processMessageQueue();
-                
-                // 觸發連接成功事件
-                if (window.onWebSocketConnected) {
-                    window.onWebSocketConnected();
+                // 🔧 強化：立即同步歷史記錄
+                if (window.Editor && typeof window.Editor.loadHistoryFromStorage === 'function') {
+                    setTimeout(() => {
+                        window.Editor.loadHistoryFromStorage();
+                        console.log('🔄 WebSocket連接後同步歷史記錄');
+                    }, 500);
                 }
+                
+                // 自動加入房間（如果有保存的房間信息）
+                const savedRoomInfo = this.getSavedRoomInfo();
+                if (savedRoomInfo.room && savedRoomInfo.user) {
+                    console.log('🏠 檢測到保存的房間信息，自動重新加入...');
+                    this.joinRoom(savedRoomInfo.room, savedRoomInfo.user);
+                }
+                
+                this.startHeartbeat();
             };
 
             this.ws.onmessage = (event) => {
@@ -179,6 +181,12 @@ class WebSocketManager {
                 break;
             case 'code_loaded':
                 this.handleCodeLoaded(message);
+                break;
+            case 'history_data':
+                this.handleHistoryData(message);
+                break;
+            case 'history_synced':
+                this.handleHistorySynced(message);
                 break;
             case 'pong':
                 this.lastHeartbeat = Date.now();
@@ -494,6 +502,39 @@ class WebSocketManager {
         }
     }
 
+    // 處理歷史數據
+    handleHistoryData(message) {
+        console.log('📥 收到歷史數據:', message);
+        
+        if (window.Editor && typeof window.Editor.handleHistoryData === 'function') {
+            console.log('🔄 調用編輯器處理歷史數據...');
+            window.Editor.handleHistoryData(message);
+        } else {
+            console.error('❌ 編輯器未找到或方法不存在');
+            console.log('   - Editor 存在:', !!window.Editor);
+            console.log('   - handleHistoryData 方法存在:', !!(window.Editor && window.Editor.handleHistoryData));
+            
+            // 降級處理：直接顯示歷史數據
+            if (message.data) {
+                console.log('🔄 使用降級方式顯示歷史數據');
+                if (window.UI && window.UI.showToast) {
+                    window.UI.showToast('歷史數據', message.data.substring(0, 100) + '...', 'info', 5000);
+                } else {
+                    alert('歷史數據: ' + message.data);
+                }
+            }
+        }
+    }
+
+    // 處理歷史同步完成
+    handleHistorySynced(message) {
+        console.log('✅ 歷史同步完成:', message);
+        
+        if (window.UI) {
+            window.UI.showToast('歷史同步完成', '歷史數據已成功同步', 'success');
+        }
+    }
+
     // 更新用戶列表
     updateUserList(users) {
         console.log(`👥 準備更新用戶列表: ${users ? users.length : 0} 個用戶`);
@@ -591,6 +632,20 @@ class WebSocketManager {
         
         this.currentRoom = null;
         console.log('👋 已離開房間');
+    }
+
+    // 獲取保存的房間信息
+    getSavedRoomInfo() {
+        // 實現獲取保存的房間信息的邏輯
+        // 這裡需要根據實際情況實現
+        return { room: null, user: null };
+    }
+
+    // 加入房間
+    joinRoom(roomName, userName) {
+        this.currentRoom = roomName;
+        this.currentUser = userName;
+        this.connect(roomName, userName);
     }
 }
 

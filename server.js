@@ -817,53 +817,45 @@ function generateRandomUserName() {
 async function handleMessage(ws, message) {
     switch (message.type) {
         case 'ping':
-            // 心跳回應
-            ws.send(JSON.stringify({
-                type: 'pong',
-                timestamp: Date.now()
-            }));
+            // 處理客戶端心跳
+            ws.send(JSON.stringify({ type: 'pong' }));
             break;
-
         case 'join_room':
             await handleJoinRoom(ws, message);
             break;
-
         case 'leave_room':
             handleLeaveRoom(ws, message);
             break;
-
         case 'code_change':
             handleCodeChange(ws, message);
             break;
-
         case 'cursor_change':
             handleCursorChange(ws, message);
             break;
-
         case 'chat_message':
             await handleChatMessage(ws, message);
             break;
-
         case 'ai_request':
             await handleAIRequest(ws, message);
             break;
-
         case 'conflict_notification':
-            handleConflictNotification(ws, message);
+            await handleConflictNotification(ws, message);
             break;
-
+        case 'load_history':
+            await handleLoadHistory(ws, message);
+            break;
+        case 'sync_history':
+            await handleSyncHistory(ws, message);
+            break;
         case 'save_code':
             await handleSaveCode(ws, message);
             break;
-
         case 'load_code':
             await handleLoadCode(ws, message);
             break;
-
         case 'run_code':
             handleRunCode(ws, message);
             break;
-
         default:
             console.warn(`⚠️ 未知消息類型: ${message.type} from ${ws.userId}`);
             
@@ -2173,6 +2165,30 @@ if (typeof PORT === 'string' && PORT.includes('WEB_PORT')) {
 // 確保 PORT 是數字
 PORT = parseInt(PORT) || 8080;
 
+// 🔧 增強環境檢測邏輯
+const isZeabur = !!(process.env.ZEABUR || 
+                   process.env.ZEABUR_URL || 
+                   process.env.ZEABUR_SERVICE_DOMAIN ||
+                   (process.env.NODE_ENV === 'production' && process.env.PORT));
+
+const isRender = process.env.RENDER || process.env.RENDER_SERVICE_NAME;
+const isLocal = !isZeabur && !isRender && (process.env.NODE_ENV !== 'production');
+
+console.log(`\n🌍 部署環境檢測:`);
+console.log(`   - Zeabur: ${isZeabur ? '✅' : '❌'}`);
+console.log(`   - Render: ${isRender ? '✅' : '❌'}`);  
+console.log(`   - 本地開發: ${isLocal ? '✅' : '❌'}`);
+console.log(`   - NODE_ENV: ${process.env.NODE_ENV || '未設定'}`);
+console.log(`   - PORT: ${PORT}`);
+
+// 環境變數檢查
+if (isZeabur) {
+    console.log(`\n🔧 Zeabur 環境變數檢查:`);
+    console.log(`   - ZEABUR: ${process.env.ZEABUR || '未設定'}`);
+    console.log(`   - ZEABUR_URL: ${process.env.ZEABUR_URL || '未設定'}`);
+    console.log(`   - ZEABUR_SERVICE_DOMAIN: ${process.env.ZEABUR_SERVICE_DOMAIN || '未設定'}`);
+}
+
 const HOST = process.env.HOST || '0.0.0.0';
 
 // 抑制 HTTP/2 和 HTTP/3 的 TLS 警告（這些在 Zeabur 中是正常的）
@@ -2206,16 +2222,6 @@ server.listen(PORT, HOST, () => {
     console.log(`🚀 Python多人協作教學平台啟動成功！`);
     console.log(`📡 服務器運行在: ${HOST}:${PORT}`);
     
-    // 檢測部署環境
-    const isZeabur = process.env.ZEABUR || process.env.ZEABUR_URL;
-    const isRender = process.env.RENDER || process.env.RENDER_SERVICE_ID;
-    const isLocal = HOST.includes('localhost') || HOST.includes('127.0.0.1');
-    
-    console.log(`🌍 部署環境檢測:`);
-    console.log(`   - Zeabur: ${isZeabur ? '✅' : '❌'}`);
-    console.log(`   - Render: ${isRender ? '✅' : '❌'}`);
-    console.log(`   - 本地開發: ${isLocal ? '✅' : '❌'}`);
-    
     // 系統配置信息
     console.log(`\n⚙️ 系統配置:`);
     console.log(`   - 最大並發用戶: ${MAX_CONCURRENT_USERS}`);
@@ -2225,14 +2231,14 @@ server.listen(PORT, HOST, () => {
     
     // 網路配置 - 根據環境動態生成
     let publicUrl;
-    if (isZeabur && process.env.ZEABUR_URL) {
-        publicUrl = process.env.ZEABUR_URL;
+    if (isZeabur && (process.env.ZEABUR_URL || process.env.ZEABUR_SERVICE_DOMAIN)) {
+        publicUrl = process.env.ZEABUR_URL || `https://${process.env.ZEABUR_SERVICE_DOMAIN}`;
     } else if (isRender && process.env.RENDER_EXTERNAL_URL) {
         publicUrl = process.env.RENDER_EXTERNAL_URL;
     } else if (isLocal) {
         publicUrl = `http://${HOST}:${PORT}`;
     } else {
-        publicUrl = PUBLIC_URL;
+        publicUrl = PUBLIC_URL || `http://${HOST}:${PORT}`;
     }
     
     const wsUrl = publicUrl.replace('https://', 'wss://').replace('http://', 'ws://');
@@ -2559,7 +2565,7 @@ function handleCodeChange(ws, message) {
 }
 
 // 🆕 處理衝突通知 - 轉發給目標用戶
-function handleConflictNotification(ws, message) {
+async function handleConflictNotification(ws, message) {
     console.log('🚨 [Server] 收到衝突通知:', message);
     
     const roomId = ws.currentRoom;
@@ -2639,4 +2645,46 @@ function handleConflictNotification(ws, message) {
             timestamp: Date.now()
         }));
     }
+}
+
+// 處理代碼歷史載入請求
+async function handleLoadHistory(ws, message) {
+    const roomId = message.room || ws.currentRoom;
+    if (!roomId || !rooms[roomId]) {
+        ws.send(JSON.stringify({
+            type: 'code_history_load_error',
+            error: '請先加入房間'
+        }));
+        return;
+    }
+    
+    const room = rooms[roomId];
+    
+    const history = room.codeHistory || [];
+    
+    ws.send(JSON.stringify({
+        type: 'code_history_loaded',
+        history: history
+    }));
+}
+
+// 處理代碼歷史同步請求
+async function handleSyncHistory(ws, message) {
+    const roomId = message.room || ws.currentRoom;
+    if (!roomId || !rooms[roomId]) {
+        ws.send(JSON.stringify({
+            type: 'code_history_sync_error',
+            error: '請先加入房間'
+        }));
+        return;
+    }
+    
+    const room = rooms[roomId];
+    
+    const history = room.codeHistory || [];
+    
+    ws.send(JSON.stringify({
+        type: 'code_history_synced',
+        history: history
+    }));
 }
