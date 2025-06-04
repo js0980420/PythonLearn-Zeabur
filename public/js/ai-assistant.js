@@ -717,10 +717,11 @@ class AIAssistantManager {
                 <div class="card-body">
                     <h7><strong>💡 如何使用AI助教：</strong></h7>
                     <ol class="mt-2">
-                        <li><strong>先寫代碼：</strong>在編輯器中輸入你的 Python 代碼</li>
+                        <li><strong>編寫代碼：</strong>在編輯器中輸入你的 Python 代碼</li>
                         <li><strong>選擇功能：</strong>點擊下方按鈕選擇需要的分析功能</li>
-                        <li><strong>查看建議：</strong>AI 會分析你的代碼並提供建議</li>
-                        <li><strong>分享討論：</strong>可將建議分享到聊天室與同學討論</li>
+                        <li><strong>查看回應：</strong>AI 會分析你的代碼並提供專業建議</li>
+                        <li><strong>分享討論：</strong>可將 AI 建議分享到聊天室與同學討論</li>
+                        <li><strong>學習改進：</strong>根據建議改進代碼，提升編程技能</li>
                     </ol>
                 </div>
             </div>
@@ -729,10 +730,10 @@ class AIAssistantManager {
                 <div class="col-6">
                     <div class="card h-100">
                         <div class="card-body p-3">
-                            <h8><strong>🔍 代碼審查</strong></h8>
-                            <p class="small text-muted mb-2">檢查代碼風格、結構和邏輯</p>
-                            <button class="btn btn-outline-primary btn-sm w-100" onclick="askAI('analyze')">
-                                開始審查
+                            <h8><strong>📝 解釋程式</strong></h8>
+                            <p class="small text-muted mb-2">AI 詳細解釋代碼邏輯和功能</p>
+                            <button class="btn btn-outline-primary btn-sm w-100" onclick="globalAskAI('analyze')">
+                                <i class="fas fa-lightbulb"></i> 開始解釋
                             </button>
                         </div>
                     </div>
@@ -740,10 +741,10 @@ class AIAssistantManager {
                 <div class="col-6">
                     <div class="card h-100">
                         <div class="card-body p-3">
-                            <h8><strong>🐛 檢查錯誤</strong></h8>
-                            <p class="small text-muted mb-2">找出語法和邏輯錯誤</p>
-                            <button class="btn btn-outline-danger btn-sm w-100" onclick="askAI('check_errors')">
-                                檢查錯誤
+                            <h8><strong>🔍 檢查錯誤</strong></h8>
+                            <p class="small text-muted mb-2">AI 找出語法和邏輯錯誤</p>
+                            <button class="btn btn-outline-warning btn-sm w-100" onclick="globalAskAI('check_errors')">
+                                <i class="fas fa-bug"></i> 檢查錯誤
                             </button>
                         </div>
                     </div>
@@ -751,10 +752,10 @@ class AIAssistantManager {
                 <div class="col-6 mt-2">
                     <div class="card h-100">
                         <div class="card-body p-3">
-                            <h8><strong>💡 解釋程式</strong></h8>
-                            <p class="small text-muted mb-2">分析代碼功能和邏輯結構</p>
-                            <button class="btn btn-outline-primary btn-sm w-100" onclick="askAI('analyze')">
-                                開始解釋
+                            <h8><strong>⚡ 改進建議</strong></h8>
+                            <p class="small text-muted mb-2">AI 提供代碼優化和改進方案</p>
+                            <button class="btn btn-outline-success btn-sm w-100" onclick="globalAskAI('improvement_tips')">
+                                <i class="fas fa-lightbulb"></i> 取得建議
                             </button>
                         </div>
                     </div>
@@ -762,19 +763,54 @@ class AIAssistantManager {
                 <div class="col-6 mt-2">
                     <div class="card h-100">
                         <div class="card-body p-3">
-                            <h8><strong>📚 操作教學</strong></h8>
-                            <p class="small text-muted mb-2">查看平台使用指南</p>
-                            <button class="btn btn-outline-info btn-sm w-100" onclick="askAI('collaboration_guide')">
-                                查看教學
+                            <h8><strong>🔧 衝突分析</strong></h8>
+                            <p class="small text-muted mb-2">多人協作衝突處理和歷史查看</p>
+                            <button class="btn btn-outline-danger btn-sm w-100" onclick="globalTestConflictAnalysis()">
+                                <i class="fas fa-code-branch"></i> 衝突工具
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <h8><i class="fas fa-code-branch"></i> 協作衝突處理系統</h8>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2"><strong>🔧 衝突分析功能：</strong></p>
+                    <ul class="mb-3">
+                        <li><strong>測試衝突</strong>：模擬協作衝突情況，學習處理方法</li>
+                        <li><strong>查看歷史</strong>：檢視過去的衝突處理記錄和學習經驗</li>
+                        <li><strong>實時分析</strong>：在真實衝突時，AI 提供具體解決建議</li>
+                        <li><strong>差異對比</strong>：清楚顯示雙方代碼的差異</li>
+                    </ul>
+                    
+                    <p class="mb-2"><strong>🤝 協作衝突處理流程：</strong></p>
+                    <ol class="mb-0">
+                        <li><strong>衝突預警</strong>：修改他人正在編輯的代碼時會提醒</li>
+                        <li><strong>自動檢測</strong>：系統檢測到同時編輯產生的衝突</li>
+                        <li><strong>界面顯示</strong>：被修改方看差異對比，修改方看等待狀態</li>
+                        <li><strong>AI 協助</strong>：點擊「請AI協助分析」獲得專業建議</li>
+                        <li><strong>決定方案</strong>：選擇接受或拒絕對方修改</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="alert alert-success">
+                <h8><i class="fas fa-graduation-cap"></i> 學習小貼士：</h8>
+                <ul class="mb-0 mt-2">
+                    <li><strong>先寫再問</strong>：編寫一段代碼後再使用 AI 分析，學習效果更佳</li>
+                    <li><strong>多次互動</strong>：根據 AI 建議修改後，可再次分析學習改進</li>
+                    <li><strong>協作討論</strong>：將 AI 分析結果分享到聊天室，與同學討論學習</li>
+                    <li><strong>衝突學習</strong>：遇到協作衝突時，善用 AI 分析功能理解和解決</li>
+                    <li><strong>實踐應用</strong>：將 AI 建議實際應用到代碼中，提升編程技能</li>
+                </ul>
+            </div>
+
             <div class="alert alert-info">
-                <i class="fas fa-lightbulb"></i>
-                <strong>小提示：</strong>AI助教分析後，可以點擊「分享」按鈕將建議發送到聊天室，與其他同學一起討論學習！
+                <i class="fas fa-info-circle"></i>
+                <strong>注意：</strong>AI 助教會根據你的代碼提供個性化建議。如果沒有代碼，AI 會提供通用的學習指導。記得將有用的建議分享給其他同學一起學習！
             </div>
         `;
     }
