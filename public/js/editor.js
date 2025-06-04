@@ -16,6 +16,30 @@ class EditorManager {
         console.log('🔧 編輯器管理器已創建，初始版本號:', this.codeVersion);
     }
 
+    // 安全的 WebSocket 狀態檢查
+    safeWSCheck() {
+        try {
+            return window.wsManager && 
+                   typeof window.wsManager.isConnected === 'function' && 
+                   window.wsManager.isConnected();
+        } catch (error) {
+            console.warn('⚠️ WebSocket 狀態檢查失敗:', error);
+            return false;
+        }
+    }
+
+    // 安全的 WebSocket 調用
+    safeWSCall(methodName, ...args) {
+        try {
+            if (window.wsManager && typeof window.wsManager[methodName] === 'function') {
+                return window.wsManager[methodName](...args);
+            }
+        } catch (error) {
+            console.warn(`⚠️ WebSocket 方法調用失敗 (${methodName}):`, error);
+        }
+        return null;
+    }
+
     // 初始化編輯器
     async initialize() {
         console.log('🔧 編輯器管理器已創建，初始版本號:', this.codeVersion);
@@ -112,7 +136,7 @@ class EditorManager {
     // 設置自動保存 - 改為5分鐘
     setupAutoSave() {
         setInterval(() => {
-            if (wsManager.isConnected() && this.editor && this.isEditing && 
+            if (this.safeWSCheck() && this.editor && this.isEditing && 
                 Date.now() - this.lastAutoSave > 10000) { // 10秒無操作後才自動保存
                 this.saveCode(true); // 標記為自動保存
                 console.log('🔄 自動保存代碼');
@@ -122,7 +146,7 @@ class EditorManager {
 
     // 保存代碼
     saveCode(isAutoSave = false) {
-        if (!wsManager.isConnected()) {
+        if (!this.safeWSCheck()) {
             UI.showErrorToast("無法保存代碼：請先加入房間。");
             return;
         }
@@ -150,7 +174,7 @@ class EditorManager {
         
         this.saveToHistory(code, customName); // 將名稱傳遞給 saveToHistory
 
-        wsManager.sendMessage({
+        this.safeWSCall('sendMessage', {
             type: 'save_code',
             code: code,
             saveName: customName // 修改為 saveName 以匹配後端
@@ -203,12 +227,12 @@ class EditorManager {
 
     // 載入 - 修改為智能載入最新版本
     loadCode(loadType = 'latest') {
-        if (!wsManager.isConnected()) {
+        if (!this.safeWSCheck()) {
             UI.showErrorToast('未連接到服務器，無法載入');
             return;
         }
         
-        if (!wsManager.currentRoom) {
+        if (!this.safeWSCall('currentRoom')) {
             UI.showErrorToast('請先加入房間');
             return;
         }
@@ -217,9 +241,9 @@ class EditorManager {
         console.log('🔍 檢查代碼版本狀態...');
         
         // 請求載入房間最新代碼（服務器會返回最新版本信息）
-        wsManager.sendMessage({
+        this.safeWSCall('sendMessage', {
             type: 'load_code',
-            roomId: wsManager.currentRoom,
+            roomId: this.safeWSCall('currentRoom'),
             currentVersion: this.codeVersion // 發送當前版本號給服務器比較
         });
         
@@ -239,12 +263,12 @@ class EditorManager {
         this.showOutput('正在運行代碼...', 'info');
         
         // 發送運行請求到服務器
-        if (wsManager.isConnected()) {
-            wsManager.sendMessage({
+        if (this.safeWSCheck()) {
+            this.safeWSCall('sendMessage', {
                 type: 'run_code',
                 code: code,
-                roomId: wsManager.currentRoom,
-                userName: wsManager.currentUser
+                roomId: this.safeWSCall('currentRoom'),
+                userName: this.safeWSCall('currentUser')
             });
         } else {
             this.showOutput('錯誤：未連接到服務器', 'error');
@@ -264,7 +288,7 @@ class EditorManager {
         console.log(`   - 編輯持續時間: ${this.editStartTime ? (Date.now() - this.editStartTime) / 1000 : 0}秒`);
         console.log(`   - 本地版本: ${this.codeVersion}`);
         console.log(`   - 遠程版本: ${message.version}`);
-        console.log(`   - 本地用戶: \"${wsManager.currentUser}\"`);
+        console.log(`   - 本地用戶: \"${this.safeWSCall('currentUser')}\"`);
         console.log(`   - 遠程用戶: \"${message.userName}\"`);
         console.log(`   - 強制更新: ${message.forceUpdate}`);
         console.log(`   - 有衝突預警: ${message.hasConflictWarning}`);
@@ -280,12 +304,12 @@ class EditorManager {
         // 🔧 衝突檢測邏輯 V6 - 增強雙方提醒
         const recentlyEdited = this.editStartTime && (Date.now() - this.editStartTime) < 5000;
         const isConflict = (this.isEditing || recentlyEdited) && 
-                          message.userName !== wsManager.currentUser;
+                          message.userName !== this.safeWSCall('currentUser');
         
         console.log(`🔍 衝突檢測結果:`);
         console.log(`   - 最近編輯: ${recentlyEdited}`);
         console.log(`   - 編輯狀態: ${this.isEditing}`);
-        console.log(`   - 不同用戶: ${message.userName !== wsManager.currentUser}`);
+        console.log(`   - 不同用戶: ${message.userName !== this.safeWSCall('currentUser')}`);
         console.log(`   - 發現衝突: ${isConflict}`);
         
         if (isConflict) {
@@ -313,7 +337,7 @@ class EditorManager {
             // 在聊天室顯示衝突提醒
             if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
                 window.Chat.addSystemMessage(
-                    `⚠️ 協作衝突：${message.userName} 和 ${wsManager.currentUser} 同時在修改代碼`
+                    `⚠️ 協作衝突：${message.userName} 和 ${this.safeWSCall('currentUser')} 同時在修改代碼`
                 );
             }
             
@@ -339,19 +363,19 @@ class EditorManager {
         const conflictNotification = {
             type: 'conflict_notification',
             targetUser: message.userName,  // 發送給主改方
-            conflictWith: wsManager.currentUser,  // 被改方（自己）
-            message: `${wsManager.currentUser} 正在處理您剛才發送的代碼修改衝突`,
+            conflictWith: this.safeWSCall('currentUser'),  // 被改方（自己）
+            message: `${this.safeWSCall('currentUser')} 正在處理您剛才發送的代碼修改衝突`,
             timestamp: Date.now(),
             conflictData: {
-                localUser: wsManager.currentUser,
+                localUser: this.safeWSCall('currentUser'),
                 remoteUser: message.userName,
                 localCode: this.editor.getValue(),
                 remoteCode: message.code
             }
         };
         
-        if (wsManager.isConnected()) {
-            wsManager.sendMessage(conflictNotification);
+        if (this.safeWSCheck()) {
+            this.safeWSCall('sendMessage', conflictNotification);
             console.log('✅ 衝突通知已發送給:', message.userName);
         }
     }
@@ -378,7 +402,7 @@ class EditorManager {
             
             // 通知聊天室
             if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                window.Chat.addSystemMessage(`${wsManager.currentUser} 選擇載入 ${message.userName} 的代碼版本`);
+                window.Chat.addSystemMessage(`${this.safeWSCall('currentUser')} 選擇載入 ${message.userName} 的代碼版本`);
             }
         } else {
             // 用戶選擇保持本地版本，強制發送本地代碼
@@ -386,7 +410,7 @@ class EditorManager {
             
             // 通知聊天室
             if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                window.Chat.addSystemMessage(`${wsManager.currentUser} 選擇保持自己的代碼版本`);
+                window.Chat.addSystemMessage(`${this.safeWSCall('currentUser')} 選擇保持自己的代碼版本`);
             }
             
             setTimeout(() => {
@@ -426,7 +450,7 @@ class EditorManager {
         
         // 🔧 短暫延遲後處理編輯狀態
         setTimeout(() => {
-            if (message.userName === wsManager.currentUser) {
+            if (message.userName === this.safeWSCall('currentUser')) {
                 // 自己的更新，完全重置編輯狀態
                 this.isEditing = false;
                 console.log('🔄 自己的更新，重置編輯狀態');
@@ -785,14 +809,14 @@ class EditorManager {
 
     // 發送代碼變更 - 🔧 增加衝突預警機制
     sendCodeChange(forceUpdate = false) {
-        if (!wsManager.isConnected() || !this.editor) {
+        if (!this.safeWSCheck() || !this.editor) {
             console.log('❌ WebSocket 未連接或編輯器未初始化，無法發送代碼變更');
             return;
         }
 
         const code = this.editor.getValue();
         
-        console.log(`📤 準備發送代碼變更 - 強制發送: ${forceUpdate}, 用戶: ${wsManager.currentUser}`);
+        console.log(`📤 準備發送代碼變更 - 強制發送: ${forceUpdate}, 用戶: ${this.safeWSCall('currentUser')}`);
         
         // 🔧 新增：衝突預警檢查（只在非強制更新時進行）
         if (!forceUpdate && this.shouldShowConflictWarning()) {
@@ -814,14 +838,14 @@ class EditorManager {
                 
                 // 在聊天室提示用戶可以協商
                 if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                    window.Chat.addSystemMessage(`💬 ${wsManager.currentUser} 想要修改代碼，請大家協商一下`);
+                    window.Chat.addSystemMessage(`💬 ${this.safeWSCall('currentUser')} 想要修改代碼，請大家協商一下`);
                 }
                 return;
             } else {
                 console.log('✅ 用戶選擇繼續發送，將通知其他用戶處理衝突');
                 // 在聊天室預告即將的修改
                 if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                    window.Chat.addSystemMessage(`⚠️ ${wsManager.currentUser} 即將發送代碼修改，可能產生協作衝突`);
+                    window.Chat.addSystemMessage(`⚠️ ${this.safeWSCall('currentUser')} 即將發送代碼修改，可能產生協作衝突`);
                 }
             }
         }
@@ -829,7 +853,7 @@ class EditorManager {
         const message = {
             type: 'code_change',
             code: code,
-            userName: wsManager.currentUser,
+            userName: this.safeWSCall('currentUser'),
             timestamp: Date.now(),
             // 🔧 新增：標記是否為預警後的發送
             hasConflictWarning: !forceUpdate && this.shouldShowConflictWarning()
@@ -841,7 +865,7 @@ class EditorManager {
             console.log('🔥 強制更新標記已添加');
         }
         
-        wsManager.sendMessage(message);
+        this.safeWSCall('sendMessage', message);
 
         // 顯示協作提醒
         if (this.collaboratingUsers.size > 0) {
@@ -882,7 +906,7 @@ class EditorManager {
         // 這個方法需要與用戶列表管理結合
         // 目前先返回已知的協作用戶
         const collaborators = Array.from(this.collaboratingUsers || []);
-        return collaborators.filter(user => user !== wsManager.currentUser);
+        return collaborators.filter(user => user !== this.safeWSCall('currentUser'));
     }
 
     // 載入歷史記錄從本地存儲
@@ -917,21 +941,21 @@ class EditorManager {
 
     // 🆕 從服務器載入歷史記錄
     loadHistoryFromServer() {
-        if (!wsManager.isConnected() || !wsManager.currentRoom) {
+        if (!this.safeWSCheck() || !this.safeWSCall('currentRoom')) {
             console.log('📡 WebSocket未連接或未加入房間，跳過服務器歷史記錄載入');
             return;
         }
         
         console.log('📡 嘗試從服務器載入歷史記錄...');
-        wsManager.sendMessage({
+        this.safeWSCall('sendMessage', {
             type: 'load_history',
-            roomId: wsManager.currentRoom
+            roomId: this.safeWSCall('currentRoom')
         });
     }
 
     // 🆕 與服務器同步歷史記錄
     syncHistoryWithServer() {
-        if (!wsManager.isConnected() || !wsManager.currentRoom) {
+        if (!this.safeWSCheck() || !this.safeWSCall('currentRoom')) {
             console.log('📡 WebSocket未連接或未加入房間，跳過歷史記錄同步');
             return;
         }
@@ -945,9 +969,9 @@ class EditorManager {
             codeLength: (item.code || '').length
         }));
         
-        wsManager.sendMessage({
+        this.safeWSCall('sendMessage', {
             type: 'sync_history',
-            roomId: wsManager.currentRoom,
+            roomId: this.safeWSCall('currentRoom'),
             localHistory: localSummary
         });
     }

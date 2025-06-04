@@ -1037,6 +1037,53 @@ class ConflictResolverManager {
             }
         }
     }
+
+    // 🔍 檢測衝突（簡化版本）
+    static detectConflict(localCode, remoteCode, localUser, remoteUser) {
+        const hasConflict = localCode !== remoteCode && localCode.trim() !== '' && remoteCode.trim() !== '';
+        
+        if (hasConflict) {
+            console.log('⚠️ 發現代碼衝突:', {
+                localUser: localUser,
+                remoteUser: remoteUser,
+                localLength: localCode.length,
+                remoteLength: remoteCode.length
+            });
+        }
+        
+        return hasConflict;
+    }
+
+    // 🤝 處理衝突決議
+    static handleConflictResolution(decision, conflictData) {
+        console.log('📋 處理衝突決議:', decision, conflictData);
+        
+        // 安全檢查 WebSocket 連接
+        if (!window.wsManager || typeof window.wsManager.isConnected !== 'function' || !window.wsManager.isConnected()) {
+            console.error('❌ WebSocket 未連接，無法發送衝突決議');
+            if (window.UI) {
+                window.UI.showToast('連接錯誤', '無法發送衝突決議，請檢查連接', 'error');
+            }
+            return;
+        }
+        
+        try {
+            // 發送衝突決議到服務器
+            window.wsManager.sendMessage({
+                type: 'conflict_resolution',
+                decision: decision,
+                conflictData: conflictData,
+                timestamp: Date.now()
+            });
+            
+            console.log('✅ 衝突決議已發送');
+        } catch (error) {
+            console.error('❌ 發送衝突決議失敗:', error);
+            if (window.UI) {
+                window.UI.showToast('發送失敗', '無法發送衝突決議，請重試', 'error');
+            }
+        }
+    }
 }
 
 // 全局衝突解決器實例

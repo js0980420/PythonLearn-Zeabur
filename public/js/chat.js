@@ -194,52 +194,58 @@ class ChatManager {
 
     // 發送聊天消息
     sendMessage() {
-        const message = this.chatInput.value.trim();
+        const chatInput = document.getElementById('chatInput');
+        const message = chatInput.value.trim();
         
-        console.log(`💬 學生嘗試發送聊天消息: "${message}"`);
-        console.log(`🔗 WebSocket連接狀態: ${wsManager.isConnected()}`);
+        console.log(`💬 準備發送聊天消息: "${message}"`);
+        console.log(`🔗 WebSocket連接狀態: ${window.wsManager && window.wsManager.isConnected ? window.wsManager.isConnected() : 'undefined'}`);
         
         if (!message) {
-            console.log(`❌ 消息為空，取消發送`);
+            console.log('📝 聊天消息為空，忽略發送');
             return;
         }
         
-        if (!wsManager.isConnected()) {
-            console.log(`❌ WebSocket未連接，無法發送消息`);
+        // 安全檢查 WebSocket 連接
+        if (!window.wsManager || typeof window.wsManager.isConnected !== 'function' || !window.wsManager.isConnected()) {
+            console.error('❌ WebSocket 未連接，無法發送聊天消息');
+            this.addMessage('系統', '❌ 請先加入房間再發送消息', 'system');
             return;
         }
         
-        console.log(`📤 發送聊天消息到服務器...`);
-        wsManager.sendMessage({
-            type: 'chat_message',
-            message: message
-        });
-        
-        this.chatInput.value = '';
-        console.log(`✅ 聊天消息已發送，輸入框已清空`);
+        try {
+            window.wsManager.sendMessage({
+                type: 'chat_message',
+                message: message,
+                userName: window.wsManager.currentUser || '未知用戶',
+                timestamp: Date.now()
+            });
+            
+            console.log('✅ 聊天消息已發送');
+            chatInput.value = '';
+        } catch (error) {
+            console.error('❌ 發送聊天消息失敗:', error);
+            this.addMessage('系統', '❌ 消息發送失敗，請重試', 'system');
+        }
     }
 
     // 發送AI回應到聊天室
-    sendAIResponseToChat(aiResponse) {
-        if (!aiResponse || !wsManager.isConnected()) return;
+    sendAIResponse(response) {
+        console.log('🤖 準備發送AI回應到聊天室:', response.substring(0, 100) + '...');
         
-        // 清理HTML標籤，保留文本內容
-        const cleanResponse = this.stripHtmlTags(aiResponse);
-        const formattedMessage = `🤖 AI助教回應：\n${cleanResponse}`;
+        // 安全檢查 WebSocket 連接  
+        if (!response || !window.wsManager || typeof window.wsManager.isConnected !== 'function' || !window.wsManager.isConnected()) return;
         
-        wsManager.sendMessage({
-            type: 'chat_message',
-            message: formattedMessage
-        });
-        
-        // 顯示成功提示
-        if (UI && UI.showSuccessToast) {
-            UI.showSuccessToast('AI回應已分享到聊天室');
-        }
-        
-        // 切換到聊天室查看
-        if (UI && UI.switchToChat) {
-            UI.switchToChat();
+        try {
+            window.wsManager.sendMessage({
+                type: 'chat_message',
+                message: `🤖 AI助教: ${response}`,
+                userName: 'AI助教',
+                timestamp: Date.now(),
+                isAI: true
+            });
+            console.log('✅ AI回應已發送到聊天室');
+        } catch (error) {
+            console.error('❌ 發送AI回應失敗:', error);
         }
     }
 

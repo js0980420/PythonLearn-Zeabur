@@ -777,6 +777,38 @@
                 console.error('❌ 無法設置預設界面，UI未定義');
             }
         });
+
+        // 🔧 頁面卸載時清理 WebSocket 連接
+        window.addEventListener('beforeunload', function(event) {
+            console.log('🧹 頁面即將卸載，清理 WebSocket 連接...');
+            
+            // 清理 WebSocket 連接
+            if (typeof wsManager !== 'undefined' && wsManager.disconnect) {
+                wsManager.disconnect();
+                console.log('✅ WebSocket 連接已清理');
+            }
+            
+            // 清理編輯器狀態
+            if (typeof Editor !== 'undefined' && Editor.cleanup) {
+                Editor.cleanup();
+                console.log('✅ 編輯器狀態已清理');
+            }
+        });
+
+        // 🔧 頁面隱藏時暫停心跳（移動端優化）
+        document.addEventListener('visibilitychange', function() {
+            if (typeof wsManager !== 'undefined') {
+                if (document.hidden) {
+                    console.log('📱 頁面已隱藏，暫停心跳');
+                    wsManager.stopHeartbeat();
+                } else {
+                    console.log('📱 頁面已顯示，恢復心跳');
+                    if (wsManager.isConnected()) {
+                        wsManager.startHeartbeat();
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html> 

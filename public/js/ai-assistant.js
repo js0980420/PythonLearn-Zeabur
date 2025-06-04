@@ -820,6 +820,39 @@ class AIAssistantManager {
         this.showResponse(this.getAIIntroduction());
         this.isFirstPrompt = false;
     }
+
+    // 📤 發送AI請求
+    static sendAIRequest(action, code, requestId) {
+        console.log(`🤖 發送AI請求 - 動作: ${action}, 代碼長度: ${code.length}, RequestID: ${requestId}`);
+        
+        // 安全檢查 WebSocket 連接
+        if (!window.wsManager || typeof window.wsManager.isConnected !== 'function' || !window.wsManager.isConnected()) {
+            console.error('❌ WebSocket 未連接，無法發送AI請求');
+            if (window.UI) {
+                window.UI.showToast('連接錯誤', '請先加入房間再使用AI助教', 'error');
+            }
+            return;
+        }
+        
+        const message = {
+            type: 'ai_request',
+            action: action,
+            data: { code: code },
+            requestId: requestId
+        };
+        
+        console.log('📤 準備發送AI請求消息:', message);
+        
+        try {
+            window.wsManager.sendMessage(message);
+            console.log('✅ AI請求已發送');
+        } catch (error) {
+            console.error('❌ 發送AI請求失敗:', error);
+            if (window.UI) {
+                window.UI.showToast('發送失敗', '無法發送AI請求，請重試', 'error');
+            }
+        }
+    }
 }
 
 // 創建全域AI助教實例

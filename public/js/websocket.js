@@ -5,121 +5,123 @@ class WebSocketManager {
         this.currentUser = null;
         this.currentRoom = null;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 1000;
+        this.maxReconnectAttempts = 3; // 🔧 降低重連次數
+        this.reconnectDelay = 2000; // 🔧 增加重連延遲
         this.messageQueue = [];
         this.heartbeatInterval = null;
         this.lastHeartbeat = 0;
-        this.isConnected = false;
-        this.retryDelay = 1000; // 重置重連延遲
+        this.retryDelay = 2000; // 增加初始延遲
+        this.isManualDisconnect = false; // 🆕 追蹤是否為手動斷開
+        this.connectionInProgress = false; // 🆕 防止並行連接
     }
 
-    // 檢查連接狀態
+    // 檢查 WebSocket 連接狀態
     isConnected() {
         return this.ws && this.ws.readyState === WebSocket.OPEN;
     }
 
     // 建立 WebSocket 連接
     connect(roomName, userName) {
-        this.currentUser = userName;
-        this.currentRoom = roomName;
+        // 🔧 防止並行連接
+        if (this.connectionInProgress) {
+            console.log('⚠️ 連接正在進行中，跳過重複連接');
+            return;
+        }
         
-        // 智能檢測 WebSocket URL
+        this.connectionInProgress = true;
+        this.isManualDisconnect = false;
+        
+        // 🔧 清理現有連接
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        
+        // 清理現有心跳
+        this.stopHeartbeat();
+        
+        // 🔧 暫時禁用自動重連，避免創建大量虛擬用戶
+        console.log('⚠️ 自動重連已暫時禁用');
+        
+        // 檢測 WebSocket URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let wsUrl;
         
-        // 檢查是否為本地開發環境 (包括局域網IP)
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname.includes('192.168.') ||
-                           window.location.hostname.includes('10.') ||
-                           window.location.hostname.includes('172.');
-        
-        if (isLocalhost) {
-            console.log('🏠 檢測到本地開發環境');
-            // 修復：確保端口號正確處理
-            const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
-            wsUrl = `ws://${window.location.hostname}:${port}`;
+        // 🔧 本地開發環境特殊處理
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            // 本地環境
+            const currentPort = window.location.port;
+            if (currentPort === '8080' || currentPort === '3000') {
+                wsUrl = `ws://localhost:${currentPort}`;
+            } else {
+                wsUrl = `ws://localhost:8080`;  // 默認8080
+            }
+        } else if (window.location.hostname.includes('.zeabur.app')) {
+            // Zeabur 環境
+            wsUrl = `${protocol}//${window.location.host}`;
         } else {
-            // 雲端環境（如 Zeabur）
-            console.log('☁️ 檢測到雲端環境');
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // 其他雲端環境
             wsUrl = `${protocol}//${window.location.host}`;
         }
         
-        console.log(`🔌 嘗試連接到 WebSocket: ${wsUrl}`);
-        console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
-        console.log(`🔍 調試信息: hostname=${window.location.hostname}, port=${window.location.port}, protocol=${window.location.protocol}`);
+        console.log(`🔗 嘗試連接 WebSocket: ${wsUrl}`);
         
         try {
             this.ws = new WebSocket(wsUrl);
-
-            this.ws.onopen = () => {
-                console.log('🔌 WebSocket 連接已打開');
-                this.isConnected = true;
-                this.reconnectAttempts = 0;
-                this.retryDelay = 1000; // 重置重連延遲
-                
-                // 🔧 強化：立即同步歷史記錄
-                if (window.Editor && typeof window.Editor.loadHistoryFromStorage === 'function') {
-                    setTimeout(() => {
-                        window.Editor.loadHistoryFromStorage();
-                        console.log('🔄 WebSocket連接後同步歷史記錄');
-                    }, 500);
+            this.setupEventHandlers();
+            
+            // 設置連接超時
+            this.connectionTimeout = setTimeout(() => {
+                if (this.ws.readyState !== WebSocket.OPEN) {
+                    console.error('❌ WebSocket 連接超時');
+                    this.ws.close();
+                    this.connectionInProgress = false;
                 }
-                
-                // 自動加入房間（如果有保存的房間信息）
-                const savedRoomInfo = this.getSavedRoomInfo();
-                if (savedRoomInfo.room && savedRoomInfo.user) {
-                    console.log('🏠 檢測到保存的房間信息，自動重新加入...');
-                    this.joinRoom(savedRoomInfo.room, savedRoomInfo.user);
-                }
-                
-                this.startHeartbeat();
-            };
-
-            this.ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    this.handleMessage(message);
-                } catch (error) {
-                    console.error('❌ 解析消息失敗:', error, event.data);
-                }
-            };
-
-            this.ws.onclose = (event) => {
-                console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
-                this.stopHeartbeat();
-                
-                // 426錯誤特殊處理
-                if (event.code === 426) {
-                    console.error('❌ WebSocket升級失敗 (426錯誤)，可能是服務器配置問題');
-                    if (window.UI) {
-                        window.UI.showToast('連接失敗', 'WebSocket升級失敗，請檢查服務器狀態', 'error');
-                    }
-                }
-                
-                // 嘗試重連
-                if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
-                    this.reconnectAttempts++;
-                    console.log(`🔄 嘗試重連 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-                    setTimeout(() => {
-                        this.connect(roomName, userName);
-                    }, this.reconnectDelay * this.reconnectAttempts);
-                } else {
-                    console.log('❌ 重連次數已達上限或正常關閉');
-                    if (window.onWebSocketDisconnected) {
-                        window.onWebSocketDisconnected();
-                    }
-                }
-            };
-
-            this.ws.onerror = (error) => {
-                console.error('❌ WebSocket 錯誤:', error);
-                console.log('🔍 錯誤詳情: 可能是網絡問題或服務器未啟動');
-            };
-
+            }, 10000);
+            
         } catch (error) {
-            console.error('❌ 建立 WebSocket 連接失敗:', error);
+            console.error('❌ WebSocket 連接失敗:', error);
+            this.connectionInProgress = false;
+        }
+    }
+
+    // 🆕 清理連接資源
+    cleanup() {
+        if (this.ws) {
+            this.isManualDisconnect = true;
+            this.stopHeartbeat();
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close(1000, 'Manual cleanup');
+            }
+            this.ws = null;
+        }
+    }
+
+    // 🆕 手動斷開連接
+    disconnect() {
+        console.log('🔌 手動斷開 WebSocket 連接');
+        this.isManualDisconnect = true;
+        this.cleanup();
+        this.clearSavedRoomInfo();
+    }
+
+    // 處理消息隊列
+    processMessageQueue() {
+        if (this.messageQueue.length > 0 && this.isConnected()) {
+            console.log(`📝 處理消息隊列: ${this.messageQueue.length} 條消息`);
+            const messages = [...this.messageQueue];
+            this.messageQueue = [];
+            
+            messages.forEach(message => {
+                try {
+                    this.ws.send(JSON.stringify(message));
+                    console.log('📤 重新發送排隊消息:', message.type);
+                } catch (error) {
+                    console.error('❌ 重新發送消息失敗:', error);
+                    // 重新加入隊列
+                    this.messageQueue.push(message);
+                }
+            });
         }
     }
 
@@ -136,7 +138,14 @@ class WebSocketManager {
             }
         } else {
             console.log('📝 WebSocket 未連接，消息已加入隊列');
-            this.messageQueue.push(message);
+            // 🔧 限制隊列大小
+            if (this.messageQueue.length < 50) {
+                this.messageQueue.push(message);
+            } else {
+                console.warn('⚠️ 消息隊列已滿，丟棄舊消息');
+                this.messageQueue.shift();
+                this.messageQueue.push(message);
+            }
         }
     }
 
@@ -178,6 +187,9 @@ class WebSocketManager {
                 break;
             case 'save_code_success':
                 this.handleSaveCodeSuccess(message);
+                break;
+            case 'save_code_error':
+                this.handleSaveCodeError(message);
                 break;
             case 'code_loaded':
                 this.handleCodeLoaded(message);
@@ -479,6 +491,15 @@ class WebSocketManager {
         }
     }
 
+    // 處理代碼保存錯誤
+    handleSaveCodeError(message) {
+        console.error('❌ 代碼保存失敗:', message.error);
+        
+        if (window.UI) {
+            window.UI.showToast('保存失敗', message.error || '代碼保存失敗', 'error');
+        }
+    }
+
     // 處理代碼載入
     handleCodeLoaded(message) {
         console.log('📥 收到代碼載入結果:', message);
@@ -586,59 +607,100 @@ class WebSocketManager {
         }
     }
 
-    // 處理消息隊列
-    processMessageQueue() {
-        while (this.messageQueue.length > 0 && this.isConnected()) {
-            const message = this.messageQueue.shift();
-            this.sendMessage(message);
-        }
-    }
-
     // 啟動心跳
     startHeartbeat() {
-        this.stopHeartbeat(); // 確保不會重複啟動
+        // 🔧 清理現有心跳
+        this.stopHeartbeat();
         
+        console.log('💓 啟動 WebSocket 心跳檢測');
+        this.lastHeartbeat = Date.now();
+        
+        // 🔧 增加心跳間隔，降低服務器負載
         this.heartbeatInterval = setInterval(() => {
             if (this.isConnected()) {
-                this.ws.send(JSON.stringify({ type: 'ping' }));
+                // 檢查上次心跳響應時間
+                const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
+                if (timeSinceLastHeartbeat > 60000) { // 1分鐘無響應
+                    console.warn('⚠️ 心跳響應超時，可能連接異常');
+                    return;
+                }
+                
+                this.sendMessage({ type: 'ping' });
+            } else {
+                console.log('💓 WebSocket 未連接，停止心跳');
+                this.stopHeartbeat();
             }
-        }, 30000); // 每30秒發送一次心跳
-        
-        console.log('💓 心跳已啟動');
+        }, 25000); // 🔧 改為25秒間隔（之前可能太頻繁）
     }
 
     // 停止心跳
     stopHeartbeat() {
         if (this.heartbeatInterval) {
+            console.log('💓 停止 WebSocket 心跳檢測');
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
-            console.log('💔 心跳已停止');
         }
     }
 
     // 離開房間
     leaveRoom() {
-        if (this.isConnected()) {
+        console.log('🚪 準備離開房間...');
+        
+        if (this.currentRoom && this.isConnected()) {
             this.sendMessage({
                 type: 'leave_room',
-                room: this.currentRoom
+                room: this.currentRoom,
+                userName: this.currentUser
             });
         }
         
-        this.stopHeartbeat();
-        if (this.ws) {
-            this.ws.close(1000, '用戶主動離開');
-        }
-        
+        // 🔧 清理房間信息
         this.currentRoom = null;
-        console.log('👋 已離開房間');
+        this.currentUser = null;
+        this.clearSavedRoomInfo();
+        
+        // 🔧 斷開連接而不是關閉（避免自動重連）
+        this.disconnect();
+        
+        console.log('✅ 已離開房間並斷開連接');
     }
 
     // 獲取保存的房間信息
     getSavedRoomInfo() {
-        // 實現獲取保存的房間信息的邏輯
-        // 這裡需要根據實際情況實現
+        try {
+            const roomInfo = localStorage.getItem('wsm_room_info');
+            if (roomInfo) {
+                return JSON.parse(roomInfo);
+            }
+        } catch (error) {
+            console.error('❌ 獲取保存的房間信息失敗:', error);
+        }
         return { room: null, user: null };
+    }
+
+    // 保存房間信息
+    saveRoomInfo(roomName, userName) {
+        try {
+            const roomInfo = {
+                room: roomName,
+                user: userName,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('wsm_room_info', JSON.stringify(roomInfo));
+            console.log('💾 房間信息已保存:', roomInfo);
+        } catch (error) {
+            console.error('❌ 保存房間信息失敗:', error);
+        }
+    }
+
+    // 清除保存的房間信息
+    clearSavedRoomInfo() {
+        try {
+            localStorage.removeItem('wsm_room_info');
+            console.log('🗑️ 已清除保存的房間信息');
+        } catch (error) {
+            console.error('❌ 清除房間信息失敗:', error);
+        }
     }
 
     // 加入房間
@@ -646,6 +708,70 @@ class WebSocketManager {
         this.currentRoom = roomName;
         this.currentUser = userName;
         this.connect(roomName, userName);
+    }
+
+    // 🔧 測試 WebSocket 連接狀態
+    testConnection() {
+        console.log('🧪 WebSocket 連接測試:');
+        console.log('   - 當前 URL:', window.location.href);
+        console.log('   - WebSocket 狀態:', this.ws ? this.ws.readyState : 'null');
+        console.log('   - 是否已連接:', this.isConnected());
+        console.log('   - 當前用戶:', this.currentUser);
+        console.log('   - 當前房間:', this.currentRoom);
+        
+        if (this.isConnected()) {
+            console.log('✅ WebSocket 連接正常');
+            return true;
+        } else {
+            console.log('❌ WebSocket 未連接');
+            console.log('💡 建議: 檢查服務器狀態並重新連接');
+            return false;
+        }
+    }
+
+    // 設置事件處理器
+    setupEventHandlers() {
+        this.ws.onopen = () => {
+            clearTimeout(this.connectionTimeout);
+            console.log('✅ WebSocket 連接已建立');
+            this.connectionInProgress = false;
+            this.reconnectAttempts = 0;
+            
+            // 🚫 不再自動加入房間 - 只有在明確調用 joinRoom 時才加入
+            console.log('⚠️ 已連接，等待手動加入房間');
+            
+            this.startHeartbeat();
+            this.processMessageQueue();
+        };
+
+        this.ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                this.handleMessage(message);
+            } catch (error) {
+                console.error('❌ 解析消息失敗:', error, event.data);
+            }
+        };
+
+        this.ws.onclose = (event) => {
+            clearTimeout(this.connectionTimeout);
+            this.connectionInProgress = false;
+            console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
+            this.stopHeartbeat();
+            
+            // 🚫 暫時禁用自動重連避免虛擬用戶問題
+            console.log('⚠️ 連接已關閉，自動重連已禁用');
+            
+            if (window.onWebSocketDisconnected) {
+                window.onWebSocketDisconnected();
+            }
+        };
+
+        this.ws.onerror = (error) => {
+            clearTimeout(this.connectionTimeout);
+            this.connectionInProgress = false;
+            console.error('❌ WebSocket 錯誤:', error);
+        };
     }
 }
 

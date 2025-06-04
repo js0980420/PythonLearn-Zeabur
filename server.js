@@ -704,28 +704,14 @@ wss.on('connection', (ws, req) => {
     const clientIP = req.socket.remoteAddress || req.connection.remoteAddress || 'unknown';
     console.log(`🌐 新連接來自IP: ${clientIP}`);
     
-    // 簡化用戶對象
-    const userId = generateUserId();
-    const userName = generateRandomUserName();
-    
-    ws.userId = userId;
-    ws.userName = userName;
+    // 不再自動創建用戶，只設置基本屬性
     ws.clientIP = clientIP;
     ws.joinTime = new Date();
     ws.isAlive = true;
+    ws.userId = null;  // 將在加入房間時設置
+    ws.userName = null; // 將在加入房間時設置
     
-    // 添加到全域用戶列表
-    users[userId] = {
-        id: userId,
-        name: userName,
-        ws: ws,
-        joinTime: new Date(),
-        isActive: true,
-        roomId: null
-    };
-    
-    console.log(`✅ 創建新用戶: ${userId} (${userName}) (IP: ${clientIP})`);
-    console.log(`📊 全域用戶總數: ${Object.keys(users).length}`);
+    console.log(`🔌 WebSocket 連接已建立 (IP: ${clientIP})`);
     
     // 心跳檢測
     ws.on('pong', () => {
@@ -736,7 +722,11 @@ wss.on('connection', (ws, req) => {
     ws.on('message', async (data) => {
         try {
             const message = JSON.parse(data);
-            console.log(`[Server DEBUG] handleMessage CALLED for ${ws.userId} (${ws.userName}). Type: '${message.type}'.`);
+            if (ws.userId) {
+                console.log(`[Server DEBUG] handleMessage CALLED for ${ws.userId} (${ws.userName}). Type: '${message.type}'.`);
+            } else {
+                console.log(`[Server DEBUG] handleMessage CALLED for anonymous connection. Type: '${message.type}'.`);
+            }
             
             await handleMessage(ws, message);
         } catch (error) {
@@ -750,52 +740,56 @@ wss.on('connection', (ws, req) => {
                 timestamp: Date.now()
             };
             
-            console.log(`📤 [Error] 發送錯誤消息給 ${ws.userId}:`, errorMessage);
+            console.log(`📤 [Error] 發送錯誤消息:`, errorMessage);
             ws.send(JSON.stringify(errorMessage));
         }
     });
     
     // 連接關閉處理
     ws.on('close', () => {
-        console.log(`👋 用戶 ${ws.userName} (${ws.userId}) 斷開連接`);
-        
-        // 從全域用戶列表中移除
-        delete users[ws.userId];
-        console.log(`🗑️ 從全域用戶列表中移除: ${ws.userId}, 剩餘用戶數: ${Object.keys(users).length}`);
-        
-        // 從房間中移除用戶
-        if (ws.currentRoom && rooms[ws.currentRoom]) {
-            const room = rooms[ws.currentRoom];
-            if (room.users && room.users[ws.userId]) {
-                delete room.users[ws.userId];
-        
-                // 廣播用戶離開消息
-                broadcastToRoom(ws.currentRoom, {
-                    type: 'user_left',
-                    userName: ws.userName,
-                    userId: ws.userId,
-                    timestamp: Date.now()
-                }, ws.userId);
-                
-                console.log(`👋 ${ws.userName} 離開房間: ${ws.currentRoom}`);
-                
-                // 如果房間空了，清理房間
-                if (Object.keys(room.users).length === 0) {
-                    console.log(`⏰ 房間 ${ws.currentRoom} 已空，將在 2 分鐘後清理`);
-                    setTimeout(() => {
-                        if (rooms[ws.currentRoom] && Object.keys(rooms[ws.currentRoom].users).length === 0) {
-                            delete rooms[ws.currentRoom];
-                            console.log(`🧹 清理空房間: ${ws.currentRoom}`);
-        }
-                    }, 120000);
+        if (ws.userId && ws.userName) {
+            console.log(`👋 用戶 ${ws.userName} (${ws.userId}) 斷開連接`);
+            
+            // 從全域用戶列表中移除
+            delete users[ws.userId];
+            console.log(`🗑️ 從全域用戶列表中移除: ${ws.userId}, 剩餘用戶數: ${Object.keys(users).length}`);
+            
+            // 從房間中移除用戶
+            if (ws.currentRoom && rooms[ws.currentRoom]) {
+                const room = rooms[ws.currentRoom];
+                if (room.users && room.users[ws.userId]) {
+                    delete room.users[ws.userId];
+            
+                    // 廣播用戶離開消息
+                    broadcastToRoom(ws.currentRoom, {
+                        type: 'user_left',
+                        userName: ws.userName,
+                        userId: ws.userId,
+                        timestamp: Date.now()
+                    }, ws.userId);
+                    
+                    console.log(`👋 ${ws.userName} 離開房間: ${ws.currentRoom}`);
+                    
+                    // 如果房間空了，清理房間
+                    if (Object.keys(room.users).length === 0) {
+                        console.log(`⏰ 房間 ${ws.currentRoom} 已空，將在 2 分鐘後清理`);
+                        setTimeout(() => {
+                            if (rooms[ws.currentRoom] && Object.keys(rooms[ws.currentRoom].users).length === 0) {
+                                delete rooms[ws.currentRoom];
+                                console.log(`🧹 清理空房間: ${ws.currentRoom}`);
+            }
+                        }, 120000);
+                    }
                 }
             }
+        } else {
+            console.log(`🔌 匿名連接斷開 (IP: ${ws.clientIP})`);
         }
     });
 
     // 錯誤處理
     ws.on('error', (error) => {
-        console.error(`❌ WebSocket 錯誤 (${ws.userId}):`, error);
+        console.error(`❌ WebSocket 錯誤:`, error);
     });
 });
 
@@ -887,6 +881,25 @@ async function handleJoinRoom(ws, message) {
     }
     
     console.log(`🚀 用戶 ${userName} 嘗試加入房間 ${roomId}`);
+
+    // 如果用戶還沒有ID，現在創建
+    if (!ws.userId) {
+        ws.userId = generateUserId();
+        ws.userName = userName;
+        
+        // 添加到全域用戶列表
+        users[ws.userId] = {
+            id: ws.userId,
+            name: userName,
+            ws: ws,
+            joinTime: new Date(),
+            isActive: true,
+            roomId: roomId
+        };
+        
+        console.log(`✅ 創建新用戶: ${ws.userId} (${userName}) (IP: ${ws.clientIP})`);
+        console.log(`📊 全域用戶總數: ${Object.keys(users).length}`);
+    }
 
     // 創建房間（如果不存在）
     if (!rooms[roomId]) {
