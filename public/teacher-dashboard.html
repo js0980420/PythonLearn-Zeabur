@@ -1,0 +1,2353 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📺 教師監控後台 - Python多人協作教學平台</title>
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --monitor-bg: #1a1a1a;
+            --code-bg: #2d3748;
+            --active-student: #48bb78;
+            --inactive-student: #718096;
+            --error-highlight: #f56565;
+            --success-highlight: #68d391;
+            --panel-bg: #2a2a2a;
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--monitor-bg);
+            color: var(--text-primary);
+            font-family: 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* 主佈局 */
+        .monitor-container {
+            display: grid;
+            grid-template-areas: 
+                "controls controls"
+                "sidebar monitor"
+                "logs logs";
+            grid-template-rows: 60px 1fr 150px;
+            grid-template-columns: 350px 1fr;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            grid-area: controls;
+            background: var(--panel-bg);
+            border-radius: 8px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #4a5568;
+        }
+
+        .monitor-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--active-student);
+        }
+
+        .monitor-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: #4a5568;
+            border: none;
+            color: var(--text-primary);
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            display: inline-block !important;
+            visibility: visible !important;
+        }
+
+        .control-btn:hover {
+            background: var(--active-student);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.active {
+            background: var(--active-student);
+        }
+
+        /* 確保廣播按鈕一定可見 */
+        #btnBroadcast {
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            background: #4a5568 !important;
+            color: var(--text-primary) !important;
+            border: none !important;
+            padding: 8px 15px !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            transition: all 0.3s !important;
+        }
+
+        #btnBroadcast:hover {
+            background: var(--active-student) !important;
+            transform: translateY(-2px) !important;
+        }
+
+        /* 確保控制面板按鈕都可見 */
+        .monitor-controls .control-btn {
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        /* 側邊欄 */
+        .sidebar {
+            grid-area: sidebar;
+            background: var(--panel-bg);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #4a5568;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            color: var(--active-student);
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        /* 房間列表 */
+        .room-list {
+            margin-bottom: 20px;
+        }
+
+        .room-item {
+            background: #3a3a3a;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 4px solid transparent;
+        }
+
+        .room-item:hover {
+            background: #4a4a4a;
+            border-left-color: var(--active-student);
+        }
+
+        .room-item.active {
+            background: #4a4a4a;
+            border-left-color: var(--active-student);
+        }
+
+        .room-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .room-stats {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* 學生列表 */
+        .student-list {
+            margin-bottom: 20px;
+        }
+
+        .student-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 5px;
+            background: #3a3a3a;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .student-item:hover {
+            background: #4a4a4a;
+        }
+
+        .student-item.active {
+            background: var(--active-student);
+            color: #1a1a1a;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.online {
+            background: var(--active-student);
+        }
+
+        .status-dot.offline {
+            background: var(--inactive-student);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .student-info {
+            flex: 1;
+        }
+
+        .student-name {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .student-activity {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .student-stats {
+            text-align: right;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* 代碼監控區 */
+        .code-monitor {
+            grid-area: monitor;
+            background: var(--code-bg);
+            border-radius: 8px;
+            border: 1px solid #4a5568;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .monitor-header {
+            background: #3a3a3a;
+            padding: 15px 20px;
+            border-bottom: 1px solid #4a5568;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .monitor-student-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .monitor-student-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--active-student);
+        }
+
+        .monitor-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .code-editor-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .CodeMirror {
+            height: 100% !important;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+            font-size: 14px !important;
+            background: var(--code-bg) !important;
+        }
+
+        .CodeMirror-gutters {
+            background: #2a2a2a !important;
+            border-right: 1px solid #4a5568 !important;
+        }
+
+        .CodeMirror-linenumber {
+            color: var(--text-secondary) !important;
+        }
+
+        .code-update {
+            animation: codeFlash 0.3s ease-in-out;
+        }
+
+        @keyframes codeFlash {
+            0% { background-color: rgba(72, 187, 120, 0.3); }
+            100% { background-color: transparent; }
+        }
+
+        /* 活動日誌 */
+        .activity-logs {
+            grid-area: logs;
+            background: var(--panel-bg);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #4a5568;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            background: #3a3a3a;
+            border-radius: 4px;
+            font-size: 13px;
+            border-left: 3px solid var(--active-student);
+        }
+
+        .log-time {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        /* 連線狀態 */
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+
+        .connection-status.connected {
+            background: var(--success-highlight);
+            color: #1a1a1a;
+        }
+
+        .connection-status.disconnected {
+            background: var(--error-highlight);
+            color: white;
+        }
+
+        /* 全螢幕模式 */
+        .fullscreen-mode .monitor-container {
+            grid-template-areas: "monitor";
+            grid-template-rows: 1fr;
+            grid-template-columns: 1fr;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            background: var(--bg-primary);
+        }
+
+        .fullscreen-mode .sidebar,
+        .fullscreen-mode .control-panel,
+        .fullscreen-mode .activity-logs {
+            display: none;
+        }
+
+        /* 全螢幕返回按鈕 */
+        .fullscreen-exit-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            background: var(--error-highlight);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+            display: none;
+        }
+
+        .fullscreen-mode .fullscreen-exit-btn {
+            display: block;
+        }
+
+        .fullscreen-exit-btn:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+
+        /* 網格檢視模式 */
+        .grid-view-mode .code-monitor {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-gap: 15px;
+            padding: 15px;
+        }
+
+        .grid-view-mode .monitor-header {
+            display: none;
+        }
+
+        .student-code-card {
+            background: var(--panel-bg);
+            border-radius: 8px;
+            border: 1px solid #4a5568;
+            overflow: hidden;
+            display: none;
+        }
+
+        .grid-view-mode .student-code-card {
+            display: block;
+        }
+
+        .student-code-header {
+            background: #3a3a3a;
+            padding: 10px 15px;
+            border-bottom: 1px solid #4a5568;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+
+        .student-code-header .student-name {
+            font-weight: bold;
+            color: var(--active-student);
+        }
+
+        .student-code-header .status-dot {
+            width: 8px;
+            height: 8px;
+            margin-left: 10px;
+        }
+
+        .student-code-content {
+            height: 300px;
+            overflow: hidden;
+        }
+
+        .student-code-content .CodeMirror {
+            height: 100%;
+            font-size: 12px;
+        }
+
+        /* 載入動畫 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 3px solid #4a5568;
+            border-top: 3px solid var(--active-student);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 廣播模態框 */
+        .broadcast-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .broadcast-modal.show {
+            display: flex;
+        }
+
+        .broadcast-content {
+            background: var(--panel-bg);
+            border-radius: 12px;
+            padding: 25px;
+            width: 450px;
+            max-width: 90vw;
+            border: 1px solid #4a5568;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .broadcast-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .broadcast-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--active-student);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        .close-btn:hover {
+            background: #4a5568;
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            background: #3a3a3a;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: var(--active-student);
+            box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.2);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 12px;
+            background: #3a3a3a;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--active-student);
+            box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.2);
+        }
+
+        .form-textarea::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .broadcast-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn-cancel {
+            background: #4a5568;
+            border: none;
+            color: var(--text-primary);
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel:hover {
+            background: #5a6578;
+        }
+
+        .btn-send {
+            background: var(--active-student);
+            border: none;
+            color: #1a1a1a;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .btn-send:hover {
+            background: #38a169;
+            transform: translateY(-1px);
+        }
+
+        .btn-send:disabled {
+            background: #4a5568;
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .broadcast-type-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .type-option {
+            flex: 1;
+            padding: 8px 12px;
+            background: #4a5568;
+            border: 1px solid #6a7280;
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .type-option.active {
+            background: var(--active-student);
+            color: #1a1a1a;
+            border-color: var(--active-student);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--active-student);
+            color: #1a1a1a;
+        }
+
+        .btn-primary:hover {
+            background: #38b2ac;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #4a5568;
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: #5a6578;
+        }
+
+        /* 聊天面板樣式 */
+        .chat-panel {
+            margin-top: 20px;
+        }
+
+        .chat-container {
+            background: #3a3a3a;
+            border-radius: 8px;
+            border: 1px solid #4a5568;
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #2a2a2a;
+        }
+
+        .chat-empty {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 20px;
+        }
+
+        .chat-empty i {
+            font-size: 24px;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 10px 12px;
+            background: #3a3a3a;
+            border-radius: 8px;
+            border-left: 4px solid #4a5568;
+        }
+
+        .chat-message.teacher-message {
+            background: #2d5016;
+            border-left-color: var(--active-student);
+        }
+
+        .chat-message.system-message {
+            background: #1a365d;
+            border-left-color: #3182ce;
+        }
+
+        .chat-message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .chat-message-user {
+            font-weight: bold;
+            color: var(--active-student);
+        }
+
+        .chat-message-time {
+            color: var(--text-secondary);
+        }
+
+        .chat-message-room {
+            color: #3182ce;
+            font-size: 11px;
+        }
+
+        .chat-message-content {
+            color: var(--text-primary);
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .chat-input-container {
+            padding: 15px;
+            background: #3a3a3a;
+            border-top: 1px solid #4a5568;
+        }
+
+        .chat-target-select {
+            margin-bottom: 10px;
+        }
+
+        .chat-input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 12px;
+            background: #2a2a2a;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--active-student);
+            box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.2);
+        }
+
+        .chat-send-btn {
+            padding: 10px 15px;
+            background: var(--active-student);
+            border: none;
+            border-radius: 6px;
+            color: #1a1a1a;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .chat-send-btn:hover {
+            background: #38b2ac;
+            transform: translateY(-1px);
+        }
+
+        .chat-send-btn:disabled {
+            background: #4a5568;
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 1400px) {
+            .dashboard-container {
+                grid-template-columns: 300px 1fr;
+                grid-template-rows: auto 1fr auto;
+                grid-template-areas: 
+                    "controls controls"
+                    "sidebar monitor"
+                    "logs logs";
+            }
+            
+            .sidebar {
+                max-height: 600px;
+            }
+            
+            .chat-messages {
+                height: 200px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+                grid-template-areas: 
+                    "controls"
+                    "sidebar"
+                    "monitor"
+                    "logs";
+            }
+            
+            .chat-messages {
+                height: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 連線狀態指示器 - 已移除避免與廣播按鈕重疊
+    <div id="connectionStatus" class="connection-status disconnected">
+        <i class="fas fa-wifi"></i> 連線中...
+    </div>
+    -->
+
+    <!-- 廣播模態框 -->
+    <div id="broadcastModal" class="broadcast-modal">
+        <div class="broadcast-content">
+            <div class="broadcast-header">
+                <div class="broadcast-title">
+                    <i class="fas fa-bullhorn"></i> 廣播消息
+                </div>
+                <button class="close-btn" onclick="closeBroadcastModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="broadcastForm">
+                <div class="form-group">
+                    <label class="form-label">廣播目標</label>
+                    <select id="broadcastTarget" class="form-select">
+                        <option value="all">📢 所有房間</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">廣播內容</label>
+                    <textarea id="broadcastMessage" class="form-textarea" 
+                              placeholder="請輸入要廣播給學生的消息內容..."
+                              required></textarea>
+                </div>
+                <div class="broadcast-actions">
+                    <button type="button" class="btn-cancel" onclick="closeBroadcastModal()">
+                        取消
+                    </button>
+                    <button type="submit" class="btn-send">
+                        <i class="fas fa-paper-plane"></i> 發送廣播
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="monitor-container" id="monitorContainer">
+        <!-- 全螢幕返回按鈕 -->
+        <button class="fullscreen-exit-btn" id="fullscreenExitBtn" onclick="toggleFullscreen()">
+            <i class="fas fa-times"></i> 退出全螢幕
+        </button>
+
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <div class="monitor-title">
+                <i class="fas fa-tv"></i> 教師監控後台
+            </div>
+            <div class="monitor-controls">
+                <button class="control-btn" id="btnFullscreen" title="全螢幕監控">
+                    <i class="fas fa-expand"></i> 全螢幕
+                </button>
+                <button class="control-btn" id="btnGridView" title="網格檢視">
+                    <i class="fas fa-th"></i> 網格檢視
+                </button>
+                <button class="control-btn" id="btnAutoFollow" title="自動跟隨活躍學生">
+                    <i class="fas fa-eye"></i> 自動跟隨
+                </button>
+                <button class="control-btn" id="btnPause" title="暫停更新">
+                    <i class="fas fa-pause"></i> 暫停
+                </button>
+                <button class="control-btn" id="btnBroadcast" title="廣播消息">
+                    <i class="fas fa-bullhorn"></i> 廣播
+                </button>
+            </div>
+        </div>
+
+        <!-- 側邊欄 -->
+        <div class="sidebar">
+            <!-- 房間列表 -->
+            <div class="room-list">
+                <h3><i class="fas fa-door-open"></i> 活躍房間</h3>
+                <div id="roomList">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        載入房間中...
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天面板 -->
+            <div class="chat-panel">
+                <h3><i class="fas fa-comments"></i> 聊天室</h3>
+                <div class="chat-container">
+                    <div id="teacherChatMessages" class="chat-messages">
+                        <div class="chat-empty">
+                            <i class="fas fa-comment-dots"></i>
+                            <p>暫無聊天消息</p>
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <div class="chat-target-select">
+                            <select id="chatTargetRoom" class="form-select">
+                                <option value="">選擇目標房間</option>
+                                <option value="all">📢 所有房間</option>
+                            </select>
+                        </div>
+                        <div class="chat-input-group">
+                            <input type="text" id="teacherChatInput" class="chat-input" placeholder="輸入回復消息..." maxlength="500">
+                            <button id="sendChatBtn" class="chat-send-btn" title="發送消息">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 統計信息 -->
+            <div class="stats-panel">
+                <h3><i class="fas fa-chart-bar"></i> 即時統計</h3>
+                <div id="statsInfo">
+                    <div style="font-size: 13px; color: var(--text-secondary);">
+                        <div>總房間數: <span id="totalRooms">0</span></div>
+                        <div>線上學生: <span id="onlineStudents">0</span></div>
+                        <div>正在編輯: <span id="activeEditors">0</span> 人</div>
+                    </div>
+                </div>
+                
+                <!-- 狀態說明 -->
+                <div class="status-legend mt-3">
+                    <h6><i class="fas fa-info-circle"></i> 狀態說明</h6>
+                    <div style="font-size: 12px; color: var(--text-secondary);">
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="status-dot online" style="margin-right: 8px;"></div>
+                            <span>在線編輯 - 學生正在活躍編輯代碼</span>
+                        </div>
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="status-dot offline" style="margin-right: 8px;"></div>
+                            <span>已離線 - 學生已斷開連接</span>
+                        </div>
+                        <div class="mt-2">
+                            <strong>網格檢視:</strong> 同時監控多個學生<br>
+                            <strong>自動跟隨:</strong> 自動切換到最活躍學生<br>
+                            <strong>廣播功能:</strong> 向學生發送通知消息
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 學生列表 -->
+            <div class="student-list">
+                <h3><i class="fas fa-users"></i> 學生狀態</h3>
+                <div id="studentList">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        載入學生中...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 代碼監控區 -->
+        <div class="code-monitor">
+            <div class="monitor-header">
+                <div class="monitor-student-info">
+                    <div class="monitor-student-name" id="currentStudentName">
+                        選擇學生開始監控
+                    </div>
+                    <div class="status-dot online" id="currentStudentStatus"></div>
+                </div>
+                <div class="monitor-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-code"></i>
+                        <span id="codeLines">0</span> 行
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-clock"></i>
+                        <span id="lastActivity">--</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-keyboard"></i>
+                        <span id="editFrequency">0</span> 次/分
+                    </div>
+                </div>
+            </div>
+            <div class="code-editor-container">
+                <textarea id="codeEditor"></textarea>
+            </div>
+            
+            <!-- 網格檢視的學生代碼卡片容器 -->
+            <div id="gridViewContainer"></div>
+        </div>
+        
+        <!-- 活動日誌 -->
+        <div class="activity-logs">
+            <h3><i class="fas fa-history"></i> 活動日誌</h3>
+            <div id="activityLog">
+                <div class="log-item">
+                    <div class="log-time">系統啟動</div>
+                    <div>教師監控後台已啟動，正在連線...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+
+    <script>
+        // 全域變數
+        let ws;
+        let codeEditor;
+        let currentStudent = null;
+        let currentRoom = null;
+        let isFullscreen = false;
+        let isPaused = false;
+        let autoFollow = false;
+        let isGridView = false;
+        let rooms = new Map();
+        let students = new Map();
+        let teacherId = null;
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+        let gridViewEditors = new Map(); // 存儲網格檢視中的編輯器實例
+        let refreshInterval;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 調試廣播按鈕
+            debugBroadcastButton();
+            
+            initializeCodeEditor();
+            initializeControls();
+            initializeChat(); // 初始化聊天功能
+            initializeBroadcastForm(); // 初始化廣播表單
+            connectWebSocket();
+        });
+
+        // 調試廣播按鈕函數
+        function debugBroadcastButton() {
+            setTimeout(() => {
+                const btn = document.getElementById('btnBroadcast');
+                const controlPanel = document.querySelector('.control-panel');
+                const monitorControls = document.querySelector('.monitor-controls');
+                
+                console.log('🔍 廣播按鈕調試信息:');
+                console.log('按鈕元素:', btn);
+                console.log('控制面板:', controlPanel);
+                console.log('監控控制區:', monitorControls);
+                
+                if (btn) {
+                    console.log('按鈕樣式:', {
+                        display: window.getComputedStyle(btn).display,
+                        visibility: window.getComputedStyle(btn).visibility,
+                        opacity: window.getComputedStyle(btn).opacity,
+                        width: window.getComputedStyle(btn).width,
+                        height: window.getComputedStyle(btn).height,
+                        position: window.getComputedStyle(btn).position,
+                        zIndex: window.getComputedStyle(btn).zIndex
+                    });
+                    
+                    // 強制設置樣式
+                    btn.style.cssText = `
+                        display: inline-block !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        background: #4a5568 !important;
+                        color: #e2e8f0 !important;
+                        border: none !important;
+                        padding: 8px 15px !important;
+                        border-radius: 6px !important;
+                        cursor: pointer !important;
+                        font-size: 14px !important;
+                        z-index: 9999 !important;
+                        position: relative !important;
+                    `;
+                    
+                    console.log('✅ 強制設置廣播按鈕樣式完成');
+                } else {
+                    console.error('❌ 找不到廣播按鈕元素 #btnBroadcast');
+                }
+                
+                // 檢查所有控制按鈕
+                const allBtns = document.querySelectorAll('.control-btn');
+                console.log('所有控制按鈕數量:', allBtns.length);
+                allBtns.forEach((button, index) => {
+                    console.log(`按鈕 ${index + 1}:`, button.id, button.textContent.trim());
+                });
+            }, 1000);
+        }
+
+        // 連接WebSocket
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    addLog('已連接到服務器');
+                    reconnectAttempts = 0;
+                    
+                    // 註冊為教師監控
+                    sendMessage({
+                        type: 'teacher_monitor',
+                        data: { action: 'register' }
+                    });
+                    
+                    // 載入房間數據
+                    loadRoomsData();
+                    
+                    // 設定定期刷新房間數據
+                    if (refreshInterval) {
+                        clearInterval(refreshInterval);
+                    }
+                    refreshInterval = setInterval(loadRoomsData, 5000); // 每5秒刷新一次
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        handleMessage(message);
+                    } catch (error) {
+                        console.error('消息解析錯誤:', error);
+                    }
+                };
+
+                ws.onclose = () => {
+                    addLog('與服務器連線中斷');
+                    
+                    // 自動重連
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        addLog(`嘗試重新連線 (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                        setTimeout(connectWebSocket, 3000);
+                    } else {
+                        addLog('重連失敗，請刷新頁面');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket錯誤:', error);
+                };
+
+            } catch (error) {
+                console.error('WebSocket連接失敗:', error);
+            }
+        }
+
+        // 發送消息
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+            }
+        }
+
+        // 處理收到的消息
+        function handleMessage(message) {
+            if (isPaused) return;
+
+            switch (message.type) {
+                case 'welcome':
+                    teacherId = message.userId;
+                    addLog(`教師ID: ${teacherId}`);
+                    break;
+
+                case 'statistics_update':
+                    updateStats(message.data);
+                    break;
+
+                case 'stats_update':
+                    updateStats(message.data);
+                    addLog(`📊 統計更新 - 房間: ${message.data.activeRooms}, 學生: ${message.data.onlineStudents}`);
+                    break;
+
+                case 'room_update':
+                    handleRoomUpdate(message.data);
+                    break;
+
+                case 'code_change':
+                    handleCodeChange(message.data);
+                    break;
+
+                case 'user_activity':
+                    handleUserActivity(message.data);
+                    break;
+
+                case 'conflict_detected':
+                    handleConflictDetected(message.data);
+                    break;
+
+                case 'chat_message':
+                    handleChatMessage(message);
+                    break;
+
+                case 'broadcast_error':
+                    addLog(`❌ 廣播錯誤: ${message.message}`);
+                    alert(`廣播錯誤: ${message.message}`);
+                    break;
+
+                case 'room_empty':
+                    handleRoomEmpty(message.data);
+                    break;
+
+                case 'rooms_loaded':
+                    handleRoomsLoaded(message.data);
+                    break;
+
+                default:
+                    console.log('未處理的消息類型:', message.type);
+            }
+        }
+
+        // 處理房間更新
+        function handleRoomUpdate(data) {
+            const { roomName, users, code, version } = data;
+            
+            console.log(`🏠 收到房間更新:`, { roomName, userCount: users?.length, version });
+
+            // 更新房間信息
+            rooms.set(roomName, {
+                name: roomName,
+                users: users || [],
+                code: code || '',
+                version: version || 1,
+                userCount: users ? users.length : 0,
+                lastActivity: data.lastActivity || Date.now(),
+                codeLines: code ? code.split('\n').length : 0
+            });
+
+            // 先將該房間的所有學生標記為離線
+            students.forEach((student, studentId) => {
+                if (student.roomId === roomName) {
+                    student.online = false;
+                }
+            });
+
+            // 更新在線學生信息
+            if (users && Array.isArray(users)) {
+                users.forEach(user => {
+                    // 使用多個可能的ID字段
+                    const studentId = user.userId || user.id;
+                    const studentName = user.userName || user.name || studentId;
+                    
+                    if (studentId) {
+                        students.set(studentId, {
+                            id: studentId,
+                            userId: studentId,
+                            name: studentName,
+                            userName: studentName,
+                            roomId: roomName,
+                            code: code || '',
+                            online: true, // 標記為在線
+                            lastActivity: new Date(data.lastActivity || Date.now()),
+                            codeLines: code ? code.split('\n').length : 0
+                        });
+                        
+                        console.log(`✅ 更新學生信息: ${studentName} (${studentId}) - 在線`);
+
+                        // 如果正在監控這個學生，更新代碼
+                        if (currentStudent === studentId && code) {
+                            updateCodeEditor(code);
+                            updateCodeStats(code);
+                            addLog(`🔄 ${studentName} 的代碼已更新`);
+                        }
+
+                        // 自動跟隨最活躍的學生
+                        if (autoFollow && code && data.lastEditedBy === studentName) {
+                            selectStudent(studentId);
+                        }
+                    }
+                });
+            }
+
+            // 移除不在當前房間用戶列表中的學生（他們已離開）
+            const currentUserIds = new Set((users || []).map(user => user.userId || user.id));
+            const studentsToRemove = [];
+            
+            students.forEach((student, studentId) => {
+                if (student.roomId === roomName && !currentUserIds.has(studentId)) {
+                    studentsToRemove.push(studentId);
+                    console.log(`🚪 學生 ${student.name} (${studentId}) 已離開房間 ${roomName}`);
+                }
+            });
+            
+            // 實際移除離開的學生
+            studentsToRemove.forEach(studentId => {
+                const student = students.get(studentId);
+                addLog(`🚪 ${student.name} 離開了房間 ${roomName}`);
+                students.delete(studentId);
+                
+                // 如果正在監控這個學生，清除監控狀態
+                if (currentStudent === studentId) {
+                    currentStudent = null;
+                    document.getElementById('currentStudentName').textContent = '選擇學生開始監控';
+                    updateCodeEditor('');
+                    updateCodeStats('');
+                }
+            });
+
+            // 如果當前選中的是這個房間，且沒有選中學生，顯示房間代碼
+            if (currentRoom === roomName && !currentStudent && code) {
+                updateCodeEditor(code);
+                updateCodeStats(code);
+                document.getElementById('currentStudentName').textContent = `房間: ${roomName}`;
+                addLog(`🔄 房間 ${roomName} 代碼已更新`);
+            }
+
+            updateRoomList();
+            updateStudentList();
+            updateChatRoomSelector(); // 添加這行來更新聊天房間選擇器
+            updateBroadcastTargets(); // 同時更新廣播目標選擇器
+        }
+
+        // 處理房間空置
+        function handleRoomEmpty(data) {
+            const { roomName, message } = data;
+            addLog(`🏠 ${message}`);
+            
+            // 移除該房間的所有學生
+            const studentsToRemove = [];
+            students.forEach((student, studentId) => {
+                if (student.roomId === roomName) {
+                    studentsToRemove.push(studentId);
+                }
+            });
+            
+            studentsToRemove.forEach(studentId => {
+                const student = students.get(studentId);
+                console.log(`🚪 清理學生: ${student.name} (${studentId}) 從空房間 ${roomName}`);
+                students.delete(studentId);
+                
+                // 如果正在監控這個學生，清除監控狀態
+                if (currentStudent === studentId) {
+                    currentStudent = null;
+                    document.getElementById('currentStudentName').textContent = '選擇學生開始監控';
+                    updateCodeEditor('');
+                    updateCodeStats('');
+                }
+            });
+            
+            // 如果房間已經完全清空，從rooms Map中移除
+            if (rooms.has(roomName)) {
+                const room = rooms.get(roomName);
+                if (!room.users || room.users.length === 0) {
+                    rooms.delete(roomName);
+                    console.log(`🗑️ 已移除空房間: ${roomName}`);
+                }
+            }
+            
+            updateStudentList();
+            updateRoomList();
+            updateChatRoomSelector(); // 添加這行來更新聊天房間選擇器
+            updateBroadcastTargets(); // 同時更新廣播目標選擇器
+        }
+
+        // 處理代碼變更
+        function handleCodeChange(data) {
+            const { userId, userName, roomName, code, version, timestamp } = data;
+            
+            console.log(`🔄 收到代碼變更通知:`, { userId, userName, roomName, version });
+            
+            // 更新房間代碼
+            if (rooms.has(roomName)) {
+                const room = rooms.get(roomName);
+                room.code = code;
+                room.version = version;
+                room.lastEditedBy = userName;
+                room.lastActivity = timestamp || Date.now();
+                room.codeLines = code ? code.split('\n').length : 0;  // 添加代碼行數更新
+                rooms.set(roomName, room);
+                console.log(`✅ 已更新房間 ${roomName} 的代碼`);
+                
+                // 如果當前監控的是這個房間（而不是特定學生），立即更新顯示
+                if (currentRoom === roomName && !currentStudent) {
+                    updateCodeEditor(code);
+                    updateCodeStats(code);
+                    document.getElementById('currentStudentName').textContent = `房間: ${roomName}`;
+                    addLog(`🔄 房間 ${roomName} 代碼已即時更新`);
+                }
+            }
+
+            // 更新學生代碼 - 改用userId作為主要匹配條件
+            let studentUpdated = false;
+            
+            // 方法1：直接通過userId匹配
+            if (userId && students.has(userId)) {
+                const student = students.get(userId);
+                student.code = code;
+                student.lastActivity = new Date(timestamp || Date.now());
+                student.codeLines = code.split('\n').length;
+                students.set(userId, student);
+                studentUpdated = true;
+                
+                console.log(`✅ 直接通過userId ${userId} 更新學生代碼`);
+                
+                // 如果正在監控這個學生，立即更新代碼編輯器
+                if (currentStudent === userId) {
+                    updateCodeEditor(code);
+                    updateCodeStats(code);
+                    addLog(`🔄 ${userName} 的代碼已即時更新`);
+                }
+            }
+            
+            // 方法2：如果直接匹配失敗，嘗試通過用戶名和房間匹配
+            if (!studentUpdated) {
+                students.forEach((student, studentId) => {
+                    if (student.roomId === roomName && (student.name === userName || student.userName === userName)) {
+                        student.code = code;
+                        student.lastActivity = new Date(timestamp || Date.now());
+                        student.codeLines = code.split('\n').length;
+                        students.set(studentId, student);
+                        studentUpdated = true;
+                        
+                        console.log(`✅ 通過用戶名 ${userName} 匹配更新學生 ${studentId} 代碼`);
+
+                        // 如果正在監控這個學生，立即更新代碼編輯器
+                        if (currentStudent === studentId) {
+                            updateCodeEditor(code);
+                            updateCodeStats(code);
+                            addLog(`🔄 ${userName} 的代碼已即時更新`);
+                        }
+                    }
+                });
+            }
+            
+            // 如果沒有找到對應的學生，記錄警告
+            if (!studentUpdated) {
+                console.warn(`⚠️ 無法找到對應的學生進行代碼更新:`, { userId, userName, roomName });
+                addLog(`⚠️ 代碼更新警告: 找不到學生 ${userName} (${userId || 'N/A'})`);
+            }
+
+            // 自動跟隨最活躍的學生
+            if (autoFollow && studentUpdated && userId) {
+                selectStudent(userId);
+            }
+
+            updateStudentList();
+            updateRoomList();
+            addLog(`📝 ${userName} 在房間 ${roomName} 更新了代碼 (版本 ${version})`);
+        }
+
+        // 處理用戶活動
+        function handleUserActivity(data) {
+            const { userName, action, roomName } = data;
+            addLog(`${userName} ${action} - 房間: ${roomName}`);
+        }
+
+        // 處理衝突檢測
+        function handleConflictDetected(data) {
+            const { userName, roomName, clientVersion, serverVersion } = data;
+            addLog(`⚠️ 衝突檢測: ${userName} 在房間 ${roomName} (客戶端版本: ${clientVersion}, 服務器版本: ${serverVersion})`);
+        }
+
+        // 處理聊天消息
+        function handleChatMessage(message) {
+            // 服務器發送的消息結構：{ type: 'chat_message', id, userId, userName, message, timestamp, roomName?, isTeacher? }
+            const { userName, roomName, message: chatText, isTeacher } = message;
+            const messageType = isTeacher ? 'teacher' : 'student';
+            
+            console.log(`💬 教師端收到聊天消息:`, message);
+            addLog(`💬 ${userName} 在房間 ${roomName || '未知房間'}: ${chatText}`);
+            
+            // 添加到聊天面板
+            addChatMessage(userName, roomName || '未知房間', chatText, messageType);
+            
+            // 確保房間在選擇器中
+            updateChatRoomSelector();
+        }
+
+        // 添加聊天消息到聊天面板
+        function addChatMessage(userName, roomName, message, type = 'student') {
+            const chatMessages = document.getElementById('teacherChatMessages');
+            if (!chatMessages) return;
+
+            // 移除空狀態
+            const emptyState = chatMessages.querySelector('.chat-empty');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            // 創建聊天消息元素
+            const messageElement = document.createElement('div');
+            messageElement.className = `chat-message ${type === 'teacher' ? 'teacher-message' : ''}`;
+            
+            const timeString = new Date().toLocaleTimeString('zh-TW', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            messageElement.innerHTML = `
+                <div class="chat-message-header">
+                    <div class="chat-message-user">${userName}</div>
+                    <div class="chat-message-time">${timeString}</div>
+                </div>
+                <div class="chat-message-room">房間: ${roomName}</div>
+                <div class="chat-message-content">${escapeHtml(message)}</div>
+            `;
+
+            // 添加到聊天容器
+            chatMessages.appendChild(messageElement);
+
+            // 自動滾動到底部
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 限制聊天消息數量
+            const maxMessages = 100;
+            if (chatMessages.children.length > maxMessages) {
+                chatMessages.removeChild(chatMessages.firstChild);
+            }
+        }
+
+        // 更新聊天房間選擇器
+        function updateChatRoomSelector() {
+            const selector = document.getElementById('chatTargetRoom');
+            if (!selector) {
+                console.warn('❌ 找不到聊天房間選擇器元素');
+                return;
+            }
+
+            // 保存當前選中值
+            const currentValue = selector.value;
+
+            // 清空現有選項（保留預設選項）
+            selector.innerHTML = `
+                <option value="">選擇目標房間</option>
+                <option value="all">📢 所有房間</option>
+            `;
+
+            // 添加活躍房間
+            let roomCount = 0;
+            rooms.forEach((room, roomName) => {
+                const option = document.createElement('option');
+                option.value = roomName;
+                option.textContent = `${roomName} (${room.userCount || 0} 人)`;
+                selector.appendChild(option);
+                roomCount++;
+            });
+
+            // 恢復選中值
+            if (currentValue && [...selector.options].some(opt => opt.value === currentValue)) {
+                selector.value = currentValue;
+            }
+
+            console.log(`✅ 聊天房間選擇器已更新，添加了 ${roomCount} 個房間`);
+        }
+
+        // 發送教師聊天消息
+        function sendTeacherChatMessage() {
+            const input = document.getElementById('teacherChatInput');
+            const targetSelector = document.getElementById('chatTargetRoom');
+            
+            if (!input || !targetSelector) return;
+
+            const message = input.value.trim();
+            const targetRoom = targetSelector.value;
+
+            if (!message) {
+                alert('請輸入消息內容');
+                return;
+            }
+
+            if (!targetRoom) {
+                alert('請選擇目標房間');
+                return;
+            }
+
+            // 發送消息到服務器
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'teacher_chat',
+                    data: {
+                        targetRoom: targetRoom,
+                        message: message,
+                        teacherName: '教師'
+                    }
+                }));
+
+                // 在聊天面板顯示自己的消息
+                const displayRoom = targetRoom === 'all' ? '所有房間' : targetRoom;
+                addChatMessage('教師', displayRoom, message, 'teacher');
+
+                // 清空輸入框
+                input.value = '';
+                
+                addLog(`💬 教師向 ${displayRoom} 發送消息: ${message}`);
+            } else {
+                alert('連接已斷開，無法發送消息');
+            }
+        }
+
+        // HTML轉義函數
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 初始化聊天功能
+        function initializeChat() {
+            const sendBtn = document.getElementById('sendChatBtn');
+            const input = document.getElementById('teacherChatInput');
+
+            if (sendBtn) {
+                sendBtn.addEventListener('click', sendTeacherChatMessage);
+            }
+
+            if (input) {
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendTeacherChatMessage();
+                    }
+                });
+            }
+
+            // 初始化房間選擇器
+            updateChatRoomSelector();
+        }
+
+        // 處理房間載入
+        function handleRoomsLoaded(data) {
+            if (data && data.rooms) {
+                // 清空現有房間
+                rooms.clear();
+                
+                // 載入所有房間
+                data.rooms.forEach(room => {
+                    rooms.set(room.name, {
+                        name: room.name,
+                        users: room.users || [],
+                        code: room.code || '',
+                        version: room.version || 1,
+                        userCount: room.users ? room.users.length : 0
+                    });
+                    
+                    // 更新學生信息
+                    if (room.users) {
+                        room.users.forEach(user => {
+                            students.set(user.id, {
+                                id: user.id,
+                                name: user.name || user.id,
+                                roomId: room.name,
+                                code: room.code || '',
+                                online: true,
+                                lastActivity: new Date(),
+                                codeLines: room.code ? room.code.split('\n').length : 0
+                            });
+                        });
+                    }
+                });
+                
+                updateRoomList();
+                updateStudentList();
+                updateChatRoomSelector(); // 添加這行來更新聊天房間選擇器
+                updateBroadcastTargets(); // 同時更新廣播目標選擇器
+                addLog(`📂 載入了 ${data.rooms.length} 個房間`);
+            }
+        }
+
+        // 初始化代碼編輯器
+        function initializeCodeEditor() {
+            codeEditor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+                mode: 'python',
+                theme: 'monokai',
+                lineNumbers: true,
+                readOnly: true,
+                lineWrapping: true,
+                fontSize: '14px',
+                autoRefresh: true,
+                viewportMargin: Infinity
+            });
+
+            // 設置初始代碼
+            codeEditor.setValue('');  // 移除預設文字，保持空白
+        }
+
+        // 初始化控制按鈕
+        function initializeControls() {
+            document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
+            document.getElementById('btnGridView').addEventListener('click', toggleGridView);
+            document.getElementById('btnAutoFollow').addEventListener('click', toggleAutoFollow);
+            document.getElementById('btnPause').addEventListener('click', togglePause);
+            document.getElementById('btnBroadcast').addEventListener('click', toggleBroadcast);
+
+            // 確保廣播按鈕可見
+            const broadcastBtn = document.getElementById('btnBroadcast');
+            if (broadcastBtn) {
+                broadcastBtn.style.display = 'inline-block';
+                broadcastBtn.style.visibility = 'visible';
+                broadcastBtn.style.opacity = '1';
+                console.log('✅ 廣播按鈕已初始化並設定為可見');
+            } else {
+                console.error('❌ 找不到廣播按鈕元素');
+            }
+
+            // 鍵盤快捷鍵
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'F11') {
+                    e.preventDefault();
+                    toggleFullscreen();
+                } else if (e.key === ' ') {
+                    e.preventDefault();
+                    togglePause();
+                }
+            });
+        }
+
+        // 更新代碼編輯器
+        function updateCodeEditor(code) {
+            const currentCode = codeEditor.getValue();
+            if (currentCode !== code) {
+                codeEditor.setValue(code);
+                
+                // 添加更新動畫
+                const wrapper = codeEditor.getWrapperElement();
+                wrapper.classList.add('code-update');
+                setTimeout(() => {
+                    wrapper.classList.remove('code-update');
+                }, 300);
+            }
+        }
+
+        // 更新代碼統計
+        function updateCodeStats(code) {
+            const lines = code.split('\n').length;
+            document.getElementById('codeLines').textContent = lines;
+            document.getElementById('lastActivity').textContent = '剛剛';
+        }
+
+        // 選擇學生
+        function selectStudent(studentId) {
+            currentStudent = studentId;
+            const student = students.get(studentId);
+            
+            if (student) {
+                document.getElementById('currentStudentName').textContent = student.name;
+                
+                // 更新學生列表選中狀態
+                document.querySelectorAll('.student-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                const studentElement = document.querySelector(`[data-student="${studentId}"]`);
+                if (studentElement) {
+                    studentElement.classList.add('active');
+                }
+
+                // 顯示學生代碼
+                updateCodeEditor(student.code || '');  // 移除預設提示文字
+                updateCodeStats(student.code || '');
+                
+                addLog(`開始監控學生: ${student.name}`);
+            }
+        }
+
+        // 更新房間列表
+        function updateRoomList() {
+            const container = document.getElementById('roomList');
+            container.innerHTML = '';
+
+            if (rooms.size === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">暫無活躍房間</div>';
+                return;
+            }
+
+            rooms.forEach((room, roomId) => {
+                const roomElement = document.createElement('div');
+                roomElement.className = 'room-item';
+                if (currentRoom === roomId) {
+                    roomElement.classList.add('active');
+                }
+                roomElement.dataset.room = roomId;
+                roomElement.innerHTML = `
+                    <div class="room-name">${roomId}</div>
+                    <div class="room-stats">${room.userCount} 人在線 • ${room.codeLines || 0} 行代碼</div>
+                `;
+                
+                roomElement.addEventListener('click', () => selectRoom(roomId));
+                container.appendChild(roomElement);
+            });
+        }
+
+        // 更新學生列表 - 只顯示當前選中房間的學生
+        function updateStudentList() {
+            const container = document.getElementById('studentList');
+            container.innerHTML = '';
+
+            // 如果沒有選中房間，顯示提示
+            if (!currentRoom) {
+                container.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">請先選擇房間</div>';
+                return;
+            }
+
+            // 篩選當前房間的學生
+            const roomStudents = new Map();
+            students.forEach((student, studentId) => {
+                if (student.roomId === currentRoom) {
+                    roomStudents.set(studentId, student);
+                }
+            });
+
+            if (roomStudents.size === 0) {
+                container.innerHTML = `<div style="text-align: center; color: var(--text-secondary); padding: 20px;">房間「${currentRoom}」暫無學生</div>`;
+                return;
+            }
+            
+            roomStudents.forEach((student, studentId) => {
+                const studentElement = document.createElement('div');
+                studentElement.className = 'student-item';
+                if (currentStudent === studentId) {
+                    studentElement.classList.add('active');
+                }
+                studentElement.dataset.student = studentId;
+                
+                const timeDiff = new Date() - student.lastActivity;
+                const lastActivity = timeDiff < 60000 ? '剛剛' : `${Math.floor(timeDiff / 60000)}分鐘前`;
+                
+                studentElement.innerHTML = `
+                    <div class="status-dot ${student.online ? 'online' : 'offline'}"></div>
+                    <div class="student-info">
+                        <div class="student-name">${student.name}</div>
+                        <div class="student-activity">
+                            ${student.online ? '🟢 在線編輯' : '🔴 已離線'} • ${lastActivity}
+                            <br><small>${student.codeLines} 行代碼</small>
+                        </div>
+                    </div>
+                    <div class="student-stats">
+                        <div>${student.codeLines} 行</div>
+                        <div><small>${student.online ? '活躍' : '離線'}</small></div>
+                    </div>
+                `;
+                
+                studentElement.addEventListener('click', () => selectStudent(studentId));
+                studentElement.addEventListener('dblclick', () => {
+                    selectStudent(studentId);
+                    if (!isFullscreen) toggleFullscreen();
+                });
+                
+                container.appendChild(studentElement);
+            });
+            
+            // 更新網格檢視
+            updateGridView();
+        }
+
+        // 更新統計信息
+        function updateStats(data) {
+            document.getElementById('totalRooms').textContent = data.activeRooms || 0;
+            document.getElementById('onlineStudents').textContent = data.onlineStudents || 0;
+            document.getElementById('activeEditors').textContent = data.editCount || 0;
+        }
+
+        // 選擇房間 - 改進邏輯
+        function selectRoom(roomId) {
+            const oldRoom = currentRoom;
+            currentRoom = roomId;
+            
+            // 清除當前學生選擇
+            currentStudent = null;
+            
+            // 更新房間列表選中狀態
+            document.querySelectorAll('.room-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            const roomElement = document.querySelector(`[data-room="${roomId}"]`);
+            if (roomElement) {
+                roomElement.classList.add('active');
+            }
+            
+            // 清除學生列表的選中狀態
+            document.querySelectorAll('.student-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // 載入房間詳細信息
+            loadRoomDetails(roomId);
+            
+            // 更新監控標題
+            document.getElementById('currentStudentName').textContent = `房間: ${roomId}`;
+            
+            // 更新監控狀態
+            const statusDot = document.getElementById('currentStudentStatus');
+            if (statusDot) {
+                statusDot.className = 'status-dot online';
+            }
+            
+            addLog(`切換到房間: ${roomId}`);
+            
+            // 更新學生列表（只顯示當前房間的學生）
+            updateStudentList();
+        }
+
+        // 切換全螢幕
+        function toggleFullscreen() {
+            isFullscreen = !isFullscreen;
+            const container = document.getElementById('monitorContainer');
+            const btn = document.getElementById('btnFullscreen');
+            
+            if (isFullscreen) {
+                container.classList.add('fullscreen-mode');
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-compress"></i> 退出全螢幕';
+            } else {
+                container.classList.remove('fullscreen-mode');
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-expand"></i> 全螢幕';
+            }
+            
+            // 刷新編輯器
+            setTimeout(() => {
+                if (codeEditor) {
+                    codeEditor.refresh();
+                }
+            }, 100);
+        }
+
+        // 切換網格檢視
+        function toggleGridView() {
+            isGridView = !isGridView;
+            const container = document.getElementById('monitorContainer');
+            const btn = document.getElementById('btnGridView');
+            
+            if (isGridView) {
+                container.classList.add('grid-view-mode');
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-th"></i> 網格檢視';
+            } else {
+                container.classList.remove('grid-view-mode');
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-th"></i> 網格檢視';
+            }
+            
+            // 刷新編輯器
+            setTimeout(() => {
+                if (codeEditor) {
+                    codeEditor.refresh();
+                }
+            }, 100);
+        }
+
+        // 切換自動跟隨
+        function toggleAutoFollow() {
+            autoFollow = !autoFollow;
+            const btn = document.getElementById('btnAutoFollow');
+            
+            if (autoFollow) {
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-eye-slash"></i> 停止跟隨';
+                addLog('已啟用自動跟隨活躍學生');
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-eye"></i> 自動跟隨';
+                addLog('已停用自動跟隨');
+            }
+        }
+
+        // 切換暫停
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('btnPause');
+            
+            if (isPaused) {
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="fas fa-play"></i> 恢復';
+                addLog('已暫停即時更新');
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-pause"></i> 暫停';
+                addLog('已恢復即時更新');
+            }
+        }
+
+        // 教師廣播功能
+        function toggleBroadcast() {
+            const message = prompt('請輸入要廣播給學生的消息：');
+            if (message && message.trim()) {
+                const targetRoom = currentRoom || prompt('請輸入目標房間名稱（留空則廣播給所有房間）：');
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    sendMessage({
+                        type: 'teacher_broadcast',
+                        data: {
+                            targetRoom: targetRoom || 'all',
+                            message: message.trim(),
+                            messageType: 'info'
+                        }
+                    });
+                    addLog(`📢 已廣播消息到 ${targetRoom || '所有房間'}: ${message}`);
+                }
+            }
+        }
+
+        // 教師廣播功能 - 顯示模態框
+        function toggleBroadcast() {
+            updateBroadcastTargets();
+            document.getElementById('broadcastModal').classList.add('show');
+        }
+
+        // 關閉廣播模態框
+        function closeBroadcastModal() {
+            document.getElementById('broadcastModal').classList.remove('show');
+            document.getElementById('broadcastForm').reset();
+        }
+
+        // 更新廣播目標選項
+        function updateBroadcastTargets() {
+            const select = document.getElementById('broadcastTarget');
+            if (!select) {
+                console.warn('❌ 找不到廣播目標選擇器元素');
+                return;
+            }
+            
+            select.innerHTML = '<option value="all">📢 所有房間</option>';
+            
+            let roomCount = 0;
+            rooms.forEach((room, roomId) => {
+                const option = document.createElement('option');
+                option.value = roomId;
+                option.textContent = `🏠 ${roomId} (${room.userCount} 人)`;
+                select.appendChild(option);
+                roomCount++;
+            });
+            
+            // 如果有當前選中的房間，設為預設值
+            if (currentRoom && rooms.has(currentRoom)) {
+                select.value = currentRoom;
+            }
+            
+            console.log(`✅ 廣播目標選擇器已更新，添加了 ${roomCount} 個房間`);
+        }
+
+        // 處理廣播表單提交
+        function initializeBroadcastForm() {
+            const broadcastForm = document.getElementById('broadcastForm');
+            if (broadcastForm) {
+                broadcastForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const target = document.getElementById('broadcastTarget').value;
+                    const message = document.getElementById('broadcastMessage').value.trim();
+                    
+                    if (!message) {
+                        alert('請輸入廣播內容');
+                        return;
+                    }
+                    
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        sendMessage({
+                            type: 'teacher_broadcast',
+                            data: {
+                                targetRoom: target,
+                                message: message,
+                                messageType: 'info'
+                            }
+                        });
+                        
+                        const targetName = target === 'all' ? '所有房間' : target;
+                        addLog(`📢 已廣播消息到 ${targetName}: ${message}`);
+                        closeBroadcastModal();
+                    } else {
+                        alert('連線已斷開，請重新整理頁面');
+                    }
+                });
+            }
+        }
+
+        // 創建網格檢視學生代碼卡片
+        function createStudentCodeCard(studentId, student) {
+            const card = document.createElement('div');
+            card.className = 'student-code-card';
+            card.dataset.student = studentId;
+            
+            card.innerHTML = `
+                <div class="student-code-header">
+                    <div class="student-name">${student.name}</div>
+                    <div class="status-dot ${student.online ? 'online' : 'offline'}"></div>
+                </div>
+                <div class="student-code-content">
+                    <textarea class="grid-code-editor" id="gridEditor_${studentId}"></textarea>
+                </div>
+            `;
+            
+            return card;
+        }
+
+        // 更新網格檢視
+        function updateGridView() {
+            if (!isGridView) return;
+            
+            const container = document.getElementById('gridViewContainer');
+            container.innerHTML = '';
+            
+            students.forEach((student, studentId) => {
+                const card = createStudentCodeCard(studentId, student);
+                container.appendChild(card);
+                
+                // 初始化這個學生的代碼編輯器
+                setTimeout(() => {
+                    const textarea = document.getElementById(`gridEditor_${studentId}`);
+                    if (textarea && !gridViewEditors.has(studentId)) {
+                        const editor = CodeMirror.fromTextArea(textarea, {
+                            mode: 'python',
+                            theme: 'monokai',
+                            lineNumbers: true,
+                            readOnly: true,
+                            lineWrapping: true,
+                            fontSize: '12px'
+                        });
+                        
+                        editor.setValue(student.code || '');
+                        gridViewEditors.set(studentId, editor);
+                    }
+                }, 100);
+            });
+        }
+
+        // 添加日誌
+        function addLog(message) {
+            const logContainer = document.getElementById('activityLog');
+            const logItem = document.createElement('div');
+            logItem.className = 'log-item';
+            
+            const time = new Date().toLocaleTimeString();
+            logItem.innerHTML = `
+                <div class="log-time">${time}</div>
+                <div>${message}</div>
+            `;
+            
+            logContainer.insertBefore(logItem, logContainer.firstChild);
+            
+            // 限制日誌數量
+            const logs = logContainer.querySelectorAll('.log-item');
+            if (logs.length > 50) {
+                logs[logs.length - 1].remove();
+            }
+        }
+
+        // 處理視窗大小變化
+        window.addEventListener('resize', () => {
+            setTimeout(() => {
+                if (codeEditor) {
+                    codeEditor.refresh();
+                }
+            }, 100);
+        });
+
+        // 頁面卸載時關閉連接
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+
+        // 載入房間數據
+        async function loadRoomsData() {
+            try {
+                const response = await fetch('/api/teacher/rooms');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📊 載入房間數據:', data);
+                
+                // 更新統計信息
+                updateStats({
+                    activeRooms: data.totalRooms,
+                    onlineStudents: data.studentsInRooms || data.nonTeacherUsers || data.totalUsers,
+                    editCount: 0 // 這個值需要從其他地方獲取
+                });
+                
+                // 清空現有房間數據
+                rooms.clear();
+                students.clear();
+                
+                // 處理房間數據
+                if (data.rooms && Array.isArray(data.rooms)) {
+                    data.rooms.forEach(room => {
+                        // 添加房間
+                        rooms.set(room.id, {
+                            name: room.id,
+                            users: room.users || [],
+                            code: '', // 需要單獨載入
+                            version: room.version || 1,
+                            userCount: room.userCount || 0,
+                            lastActivity: room.lastActivity || Date.now(),
+                            codeLines: room.codeLength ? Math.max(1, Math.ceil(room.codeLength / 50)) : 0
+                        });
+                        
+                        // 添加房間中的學生
+                        if (room.users && Array.isArray(room.users)) {
+                            room.users.forEach(user => {
+                                const studentId = user.id;
+                                students.set(studentId, {
+                                    id: studentId,
+                                    name: user.name || studentId,
+                                    roomId: room.id,
+                                    online: true,
+                                    lastActivity: user.lastActivity || Date.now(),
+                                    code: '', // 需要單獨載入
+                                    codeLines: 0
+                                });
+                            });
+                        }
+                    });
+                }
+                
+                // 更新UI
+                updateRoomList();
+                updateStudentList();
+                updateChatRoomSelector(); // 更新聊天房間選擇器
+                updateBroadcastTargets(); // 更新廣播目標選擇器
+                
+                // 如果有選中的房間，載入房間詳細信息
+                if (currentRoom && rooms.has(currentRoom)) {
+                    loadRoomDetails(currentRoom);
+                }
+                
+                addLog(`📂 載入了 ${data.rooms.length} 個房間，已更新選擇器`);
+                
+            } catch (error) {
+                console.error('❌ 載入房間數據失敗:', error);
+                addLog(`❌ 載入房間數據失敗: ${error.message}`);
+            }
+        }
+        
+        // 載入房間詳細信息
+        async function loadRoomDetails(roomId) {
+            try {
+                const response = await fetch(`/api/teacher/room/${roomId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const roomData = await response.json();
+                console.log(`📋 載入房間 ${roomId} 詳細信息:`, roomData);
+                
+                // 更新房間代碼
+                if (roomData.code !== undefined) {
+                    updateCodeEditor(roomData.code);
+                    updateCodeStats(roomData.code);
+                    
+                    // 更新房間信息
+                    if (rooms.has(roomId)) {
+                        const room = rooms.get(roomId);
+                        room.code = roomData.code;
+                        room.version = roomData.version || 1;
+                        room.codeLines = roomData.code ? roomData.code.split('\n').length : 0;
+                        rooms.set(roomId, room);
+                    }
+                }
+                
+                // 更新學生代碼信息
+                if (roomData.users && Array.isArray(roomData.users)) {
+                    roomData.users.forEach(user => {
+                        const studentId = user.id;
+                        if (students.has(studentId)) {
+                            const student = students.get(studentId);
+                            student.code = roomData.code || '';
+                            student.codeLines = roomData.code ? roomData.code.split('\n').length : 0;
+                            students.set(studentId, student);
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                console.error(`❌ 載入房間 ${roomId} 詳細信息失敗:`, error);
+                addLog(`❌ 載入房間詳細信息失敗: ${error.message}`);
+            }
+        }
+
+        // 連接WebSocket
+    </script>
+</body>
+</html> 

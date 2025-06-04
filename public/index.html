@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python多人協作教學平台</title>
+    
+    <!-- 避免 favicon 404 錯誤 -->
+    <link rel="icon" href="data:,">
+    
+    <!-- 外部CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    
+    <!-- 內嵌基本樣式 (確保即使外部CSS加載失敗或被移除，也有基本框架) -->
+    <style>
+        body { background-color: #6f42c1; color: #333; font-family: sans-serif; padding-top: 20px; padding-bottom: 20px; }
+        .main-container { max-width: 1200px; margin: auto; }
+        .card-custom { background-color: white !important; border-radius: 10px !important; padding: 1.5rem !important; margin-bottom: 1.5rem !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important; }
+        .btn { cursor: pointer; }
+        #editorContainer, #chatContainer, #aiResponse, #outputContent { border: 1px solid #ddd; border-radius: 5px; min-height: 100px;}
+        #outputContent { background-color: #f8f9fa; padding: 10px; max-height: 200px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;}
+        
+        /* 教師廣播樣式 */
+        .teacher-broadcast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            max-width: 400px;
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideInRight 0.5s ease-out;
+        }
+        
+        .broadcast-info {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            border-left: 5px solid #0056b3;
+        }
+        
+        .broadcast-warning {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            border-left: 5px solid #e0a800;
+            color: #212529;
+        }
+        
+        .broadcast-error {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            border-left: 5px solid #b21f2d;
+        }
+        
+        .broadcast-success {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            border-left: 5px solid #155724;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .teacher-broadcast h5 {
+            margin: 0 0 10px 0;
+            font-size: 1.1em;
+        }
+        
+        .teacher-broadcast p {
+            margin: 0;
+            line-height: 1.4;
+        }
+        
+        /* 更多必要的基礎樣式可以在這裡添加，以減少對外部CSS文件的依賴，並確保JS控制的樣式有基礎 */
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="text-center mb-4">
+            <h1 class="text-white"><i class="fas fa-code-branch"></i> Python多人協作教學平台</h1>
+        </div>
+
+        <div id="loginSection" class="card-custom p-4 mb-4">
+            <h3 class="text-center mb-4"><i class="fas fa-users"></i> 加入協作房間</h3>
+            <div class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">房間名稱</label>
+                        <input type="text" class="form-control" id="roomInput" placeholder="輸入房間名稱" value="test-room">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">您的名稱</label>
+                        <input type="text" class="form-control" id="nameInput" placeholder="輸入您的名稱">
+                    </div>
+                    <button class="btn btn-primary w-100 mb-3" onclick="globalJoinRoom()"><i class="fas fa-sign-in-alt"></i> 加入房間</button>
+                    <div class="text-center">
+                        <hr class="my-3">
+                        <p class="text-muted mb-2">教師專用</p>
+                        <button class="btn btn-outline-warning" onclick="globalOpenTeacherDashboard()"><i class="fas fa-chalkboard-teacher"></i> 教師監控後台</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="workspaceSection" style="display: none;">
+            <div class="card-custom p-3 mb-4">
+                <div class="row align-items-center">
+                    <div class="col-md-3">
+                        <h5 class="mb-0"><i class="fas fa-home"></i> 房間: <span id="currentRoom">-</span></h5>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="mb-0 text-info"><i class="fas fa-user"></i> 我是: <span id="currentUserName">-</span></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <div id="onlineUsers"><strong>在線用戶:</strong></div>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <span class="badge bg-success" id="connectionStatus">連接中...</span>
+                        <button class="btn btn-outline-danger btn-sm ms-2" onclick="globalLeaveRoom()">離開房間</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card-custom p-4" id="editorCard">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5><i class="fas fa-code"></i> 協作編輯器</h5>
+                            <div>
+                                <!-- 第一組：保存、載入、運行 -->
+                                <div class="btn-group me-2" role="group">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="globalSaveCode()">
+                                        <i class="fas fa-save"></i> 保存
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="globalLoadCode('latest')">
+                                        <i class="fas fa-sync-alt"></i> 載入
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" id="loadDropdownBtn">
+                                        <span class="visually-hidden">Toggle Dropdown</span>
+                                    </button>
+                                    <ul class="dropdown-menu" id="loadCodeOptions">
+                                        <li><h6 class="dropdown-header">載入選項</h6></li>
+                                        <li><a class="dropdown-item" href="#" onclick="globalLoadCode('latest')">
+                                            <i class="fas fa-sync-alt text-success"></i> 載入最新
+                                        </a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><h6 class="dropdown-header">歷史版本</h6></li>
+                                        <li id="historyEmptyMessage"><span class="dropdown-item-text text-muted">無歷史版本</span></li>
+                                    </ul>
+                                    <button class="btn btn-outline-success btn-sm" onclick="globalRunCode()">
+                                        <i class="fas fa-play"></i> 運行
+                                    </button>
+                                </div>
+                                
+                                <!-- 第二組：複製 -->
+                                <div class="btn-group me-2" role="group">
+                                    <button class="btn btn-primary btn-sm" onclick="globalCopyCode()">
+                                        <i class="fas fa-copy"></i> 複製
+                                    </button>
+                                </div>
+                                
+                                <!-- 第三組：更多(下載、導入) -->
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-outline-info btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="moreOptionsBtn">
+                                        <i class="fas fa-ellipsis-h"></i> 更多
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><h6 class="dropdown-header">檔案操作</h6></li>
+                                        <li><a class="dropdown-item" href="#" onclick="globalDownloadCode()">
+                                            <i class="fas fa-download text-primary"></i> 下載 .py 檔案
+                                        </a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="globalImportCode()">
+                                            <i class="fas fa-upload text-success"></i> 導入檔案
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="editorContainer">
+                            <textarea id="codeEditor"></textarea>
+                            <input type="file" id="file-import" accept=".py,.txt" style="display: none;" onchange="globalHandleFileImport(event)">
+                        </div>
+                        <div id="codeOutput" class="mt-3" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6><i class="fas fa-terminal"></i> 運行結果</h6>
+                                <button class="btn btn-outline-secondary btn-sm" onclick="globalClearOutput()"><i class="fas fa-times"></i> 清除</button>
+                            </div>
+                            <div id="outputContent"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card-custom p-3 mb-3" id="panelCard">
+                        <div class="d-flex justify-content-center mb-3">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-primary" id="aiTabBtn" onclick="globalSwitchToAI()"><i class="fas fa-robot"></i> AI助教</button>
+                                <button type="button" class="btn btn-outline-success" id="chatTabBtn" onclick="globalSwitchToChat()"><i class="fas fa-comments"></i> 聊天室</button>
+                            </div>
+                        </div>
+                        <div id="aiSection">
+                            <div class="d-grid gap-2 mb-3">
+                                <button class="btn btn-outline-info" onclick="globalAskAI('analyze')"><i class="fas fa-lightbulb"></i> 解釋程式</button>
+                                <button class="btn btn-outline-warning" onclick="globalAskAI('check_errors')"><i class="fas fa-bug"></i> 檢查錯誤</button>
+                                <button class="btn btn-outline-success" onclick="globalAskAI('improvement_tips')"><i class="fas fa-lightbulb"></i> 改進建議</button>
+                                <button class="btn btn-outline-danger" onclick="globalTestConflictAnalysis()"><i class="fas fa-code-branch"></i> 衝突分析</button>
+                                <button class="btn btn-outline-primary" onclick="globalShowTutorial()"><i class="fas fa-question-circle"></i> 操作教學</button>
+                            </div>
+                            <div id="aiResponse" class="p-2" style="min-height: 200px; background: #f8f9fa;"></div>
+                            <div id="aiShareOptions" class="mt-2" style="display: none;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">分享到聊天室?</small>
+                                    <div>
+                                        <button class="btn btn-success btn-sm" onclick="globalShareAIResponse()"><i class="fas fa-share"></i> 分享</button>
+                                        <button class="btn btn-secondary btn-sm" onclick="globalHideShareOptions()"><i class="fas fa-times"></i> 取消</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="chatSection" style="display: none;">
+                            <div id="chatContainer" class="p-2 mb-2" style="height: 300px; overflow-y: auto; background: #f8f9fa;"></div>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="chatInput" placeholder="輸入消息...">
+                                <button class="btn btn-primary" onclick="globalSendChat()"><i class="fas fa-paper-plane"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 協作提醒 -->
+        <div id="collaborationAlert" style="display: none; position: fixed; top: 20px; right: 20px; background-color: #fff3cd; color: #664d03; padding: 15px; border-radius: 5px; border: 1px solid #ffeeba; z-index: 1050;">
+            <div class="d-flex align-items-center"><i class="fas fa-exclamation-triangle text-warning me-2"></i><div><strong>⚠️ 其他同學也在修改程式碼！</strong><div id="collaboratingUsers" class="mt-1"></div></div></div>
+        </div>
+
+        <!-- 衝突解決模態窗口 -->
+        <div class="modal fade" id="conflictModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle"></i> 協作衝突</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p>檢測到協作衝突！<span id="conflictUserName">其他同學</span>也在同時修改程式碼，請查看差異後選擇解決方案：</p>
+                        
+                        <!-- 🔧 新增：代碼差異對比區域 -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="fas fa-code-branch"></i> 代碼差異對比</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="row g-0">
+                                    <div class="col-md-6">
+                                        <div class="bg-info bg-opacity-10 p-2 border-end">
+                                            <h6 class="text-info mb-2"><i class="fas fa-user"></i> 您的版本</h6>
+                                            <pre id="myCodeVersion" class="bg-white p-2 rounded border" style="max-height: 200px; overflow-y: auto; font-size: 0.9em; white-space: pre-wrap;"></pre>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-warning bg-opacity-10 p-2">
+                                            <h6 class="text-warning mb-2"><i class="fas fa-users"></i> <span id="otherUserName">對方</span>的版本</h6>
+                                            <pre id="otherCodeVersion" class="bg-white p-2 rounded border" style="max-height: 200px; overflow-y: auto; font-size: 0.9em; white-space: pre-wrap;"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 差異摘要 -->
+                                <div class="bg-light p-2 border-top">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i> 
+                                        <span id="diffSummary">正在分析差異...</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 解決方案按鈕 -->
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                <button class="btn btn-outline-success w-100" onclick="globalResolveConflict('reload')">
+                                    <i class="fas fa-check"></i> 接受對方修改
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <button class="btn btn-outline-warning w-100" onclick="globalResolveConflict('force')">
+                                    <i class="fas fa-times"></i> 保持我的版本
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <button class="btn btn-outline-info w-100" onclick="globalResolveConflict('discuss')">
+                                    <i class="fas fa-comments"></i> 複製到聊天室討論
+                                </button>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <button class="btn btn-outline-primary w-100" onclick="globalAskAIForConflictHelp()">
+                                    <i class="fas fa-robot"></i> 請 AI 協助分析
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="conflictVersionInfo" class="text-muted small mb-2"></div>
+                        <!-- AI分析結果區域 -->
+                        <div id="conflictAIAnalysis" class="mt-3 p-3 rounded" style="background:#f8f9fa; display: none;">
+                            <h6 class="text-primary"><i class="fas fa-robot"></i> AI協作衝突分析</h6>
+                            <div id="aiAnalysisContent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- main-container end -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    
+    <!-- 模組化JS檔案 (確保路徑相對於public目錄是正確的) -->
+    <script src="js/websocket.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/editor.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/ai-assistant.js"></script>
+    <script src="js/conflict.js"></script>
+    
+    <script>
+        // 全域事件處理函數 (避免HTML中的onclick直接調用模組內部方法導致可能的初始化順序問題)
+        function globalJoinRoom() { if(UI) UI.joinRoom(); else console.error("UI not ready"); }
+        function globalLeaveRoom() { if(UI) UI.leaveRoom(); else console.error("UI not ready"); }
+        function globalLoadCode(loadType) { 
+            if(Editor) Editor.loadCode(loadType); 
+            else console.error("Editor not ready"); 
+        }
+        function globalSaveCode() { if(Editor) Editor.saveCode(); else console.error("Editor not ready"); }
+        function globalRunCode() { if(Editor) Editor.runCode(); else console.error("Editor not ready"); }
+        function globalClearOutput() { if(Editor) Editor.clearOutput(); else console.error("Editor not ready"); }
+        function globalSwitchToAI() { if(UI) UI.switchToAI(); else console.error("UI not ready"); }
+        function globalSwitchToChat() { if(UI) UI.switchToChat(); else console.error("UI not ready"); }
+        function globalAskAI(action) { if(AIAssistant) AIAssistant.requestAnalysis(action); else console.error("AIAssistant not ready"); }
+        function globalShareAIResponse() { if(AIAssistant) AIAssistant.shareResponse(); else console.error("AIAssistant not ready"); }
+        function globalHideShareOptions() { if(AIAssistant) AIAssistant.hideShareOptions(); else console.error("AIAssistant not ready"); }
+        function globalSendChat() { if(Chat) Chat.sendMessage(); else console.error("Chat not ready"); }
+        function globalResolveConflict(action) { if(ConflictResolver) ConflictResolver.resolveConflict(action); else console.error("ConflictResolver not ready"); }
+        function globalAskAIForConflictHelp() { if(ConflictResolver) ConflictResolver.requestAIAnalysis(); else console.error("ConflictResolver not ready"); }
+        function globalTestConflictAnalysis() { 
+            console.log('🧪 執行衝突分析測試');
+            
+            // 顯示衝突分析選項模態框
+            showConflictAnalysisOptions();
+        }
+        function globalOpenTeacherDashboard() { window.open('/teacher', '_blank'); }
+        function globalShowTutorial() { if(UI) UI.showTutorial(); else console.error("UI not ready"); }
+        
+        // 新增的檔案操作功能
+        function globalCopyCode() { if(Editor) Editor.copyCode(); else console.error("Editor not ready"); }
+        function globalDownloadCode() { if(Editor) Editor.downloadCode(); else console.error("Editor not ready"); }
+        function globalImportCode() { if(Editor) Editor.importCode(); else console.error("Editor not ready"); }
+        function globalHandleFileImport(event) { if(Editor) Editor.handleFileImport(event); else console.error("Editor not ready"); }
+
+        // 🔍 顯示衝突分析選項
+        function showConflictAnalysisOptions() {
+            const modalHTML = `
+                <div class="modal fade" id="conflictAnalysisModal" tabindex="-1" aria-labelledby="conflictAnalysisModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-info text-white">
+                                <h5 class="modal-title" id="conflictAnalysisModalLabel">
+                                    <i class="fas fa-code-branch"></i> 衝突分析工具
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body text-center">
+                                                <i class="fas fa-vial text-warning mb-3" style="font-size: 2rem;"></i>
+                                                <h6 class="card-title">測試衝突檢測</h6>
+                                                <p class="card-text text-muted">模擬衝突情況，測試系統的衝突檢測功能</p>
+                                                <button class="btn btn-warning" onclick="performConflictTest()">
+                                                    <i class="fas fa-play"></i> 開始測試
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body text-center">
+                                                <i class="fas fa-history text-primary mb-3" style="font-size: 2rem;"></i>
+                                                <h6 class="card-title">衝突歷史記錄</h6>
+                                                <p class="card-text text-muted">查看過去的衝突記錄和解決方案</p>
+                                                <button class="btn btn-primary" onclick="showConflictHistory()">
+                                                    <i class="fas fa-list"></i> 查看歷史
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">
+                                                <i class="fas fa-info-circle text-info"></i> 衝突分析說明
+                                            </h6>
+                                            <ul class="mb-0">
+                                                <li><strong>測試衝突檢測：</strong>模擬多人協作衝突，驗證系統反應</li>
+                                                <li><strong>衝突歷史記錄：</strong>查看之前的衝突事件和解決方式</li>
+                                                <li><strong>AI協助分析：</strong>在實際衝突發生時提供智能建議</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除舊的模態框
+            const existingModal = document.getElementById('conflictAnalysisModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // 添加新的模態框
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // 顯示模態框
+            const modal = new bootstrap.Modal(document.getElementById('conflictAnalysisModal'));
+            modal.show();
+        }
+        
+        // 🧪 執行衝突測試
+        function performConflictTest() {
+            console.log('🧪 開始衝突測試');
+            
+            // 關閉選項模態框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('conflictAnalysisModal'));
+            if (modal) modal.hide();
+            
+            // 創建測試衝突數據
+            const testConflictData = {
+                roomId: 'test-room',
+                conflictUser: '測試用戶',
+                userVersion: 1,
+                serverVersion: 2,
+                userCode: Editor.getCode() || '# 測試程式碼\nprint("Hello, World!")',
+                serverCode: '# 模擬的服務器代碼\nprint("Hello, Python!")\nprint("這是衝突測試")'
+            };
+            
+            // 顯示衝突解決模態框
+            if (window.ConflictResolver) {
+                window.ConflictResolver.showConflictModal(testConflictData);
+                showToast('衝突測試開始，請在彈出的視窗中查看', 'info');
+            } else {
+                showToast('衝突解決器未初始化', 'error');
+            }
+        }
+        
+        // 📊 顯示衝突歷史
+        function showConflictHistory() {
+            console.log('📊 顯示衝突歷史');
+            
+            // 關閉選項模態框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('conflictAnalysisModal'));
+            if (modal) modal.hide();
+            
+            if (typeof conflictHistoryManager === 'undefined') {
+                showToast('衝突歷史管理器未初始化', 'error');
+                return;
+            }
+            
+            const history = conflictHistoryManager.getConflictHistory();
+            const stats = conflictHistoryManager.getStatistics();
+            
+            let historyHTML = '';
+            if (history.length === 0) {
+                historyHTML = '<div class="text-center py-4"><i class="fas fa-inbox text-muted"></i><p class="text-muted mt-2">尚無衝突記錄</p></div>';
+            } else {
+                historyHTML = history.map(record => `
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h6 class="mb-1">
+                                        <i class="fas fa-users text-primary"></i> 
+                                        與 ${record.conflictUser} 的衝突
+                                        <span class="badge bg-${record.resolution === 'accepted' ? 'success' : record.resolution === 'rejected' ? 'warning' : 'info'} ms-2">
+                                            ${record.resolution === 'accepted' ? '已接受' : record.resolution === 'rejected' ? '已拒絕' : '已合併'}
+                                        </span>
+                                    </h6>
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock"></i> ${new Date(record.timestamp).toLocaleString()}
+                                        <i class="fas fa-home ms-2"></i> ${record.roomId}
+                                    </small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="showConflictDetail(${record.id})">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            const modalHTML = `
+                <div class="modal fade" id="conflictHistoryModal" tabindex="-1" aria-labelledby="conflictHistoryModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="conflictHistoryModalLabel">
+                                    <i class="fas fa-history"></i> 衝突歷史記錄
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- 統計信息 -->
+                                <div class="row mb-4">
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h4 class="text-primary">${stats.total}</h4>
+                                                <small class="text-muted">總衝突數</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h4 class="text-success">${stats.accepted}</h4>
+                                                <small class="text-muted">已接受</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h4 class="text-warning">${stats.rejected}</h4>
+                                                <small class="text-muted">已拒絕</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h4 class="text-info">${stats.acceptanceRate}%</h4>
+                                                <small class="text-muted">接受率</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 衝突記錄列表 -->
+                                <div class="conflict-history-list" style="max-height: 400px; overflow-y: auto;">
+                                    ${historyHTML}
+                                </div>
+                                
+                                ${history.length > 0 ? `
+                                <div class="mt-3 text-center">
+                                    <button class="btn btn-outline-danger" onclick="clearConflictHistory()">
+                                        <i class="fas fa-trash"></i> 清除所有記錄
+                                    </button>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除舊的模態框
+            const existingModal = document.getElementById('conflictHistoryModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // 添加新的模態框
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // 顯示模態框
+            const historyModal = new bootstrap.Modal(document.getElementById('conflictHistoryModal'));
+            historyModal.show();
+        }
+        
+        // 📋 顯示衝突詳情
+        function showConflictDetail(recordId) {
+            if (typeof conflictHistoryManager === 'undefined') return;
+            
+            const record = conflictHistoryManager.getConflictHistory().find(r => r.id === recordId);
+            if (!record) return;
+            
+            const detailHTML = `
+                <div class="modal fade" id="conflictDetailModal" tabindex="-1" aria-labelledby="conflictDetailModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header bg-info text-white">
+                                <h5 class="modal-title" id="conflictDetailModalLabel">
+                                    <i class="fas fa-info-circle"></i> 衝突詳情 - ${new Date(record.timestamp).toLocaleString()}
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <!-- 基本信息 -->
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <i class="fas fa-info"></i> 衝突信息
+                                            </div>
+                                            <div class="card-body">
+                                                <p><strong>房間：</strong>${record.roomId}</p>
+                                                <p><strong>衝突對象：</strong>${record.conflictUser}</p>
+                                                <p><strong>我的版本：</strong>${record.userVersion}</p>
+                                                <p><strong>對方版本：</strong>${record.serverVersion}</p>
+                                                <p><strong>解決方式：</strong>
+                                                    <span class="badge bg-${record.resolution === 'accepted' ? 'success' : record.resolution === 'rejected' ? 'warning' : 'info'}">
+                                                        ${record.resolution === 'accepted' ? '接受對方修改' : record.resolution === 'rejected' ? '拒絕對方修改' : '手動合併'}
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <i class="fas fa-chart-bar"></i> 代碼統計
+                                            </div>
+                                            <div class="card-body">
+                                                <p><strong>我的代碼長度：</strong>${record.userCode.length} 字符</p>
+                                                <p><strong>對方代碼長度：</strong>${record.serverCode.length} 字符</p>
+                                                <p><strong>AI分析：</strong>${record.aiAnalysis ? '已提供' : '未使用'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 代碼對比 -->
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header bg-primary text-white">
+                                                <i class="fas fa-user"></i> 我的代碼
+                                            </div>
+                                            <div class="card-body">
+                                                <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>${record.userCode || '(空白)'}</code></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header bg-secondary text-white">
+                                                <i class="fas fa-users"></i> 對方代碼
+                                            </div>
+                                            <div class="card-body">
+                                                <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>${record.serverCode || '(空白)'}</code></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                ${record.aiAnalysis ? `
+                                <!-- AI分析結果 -->
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <i class="fas fa-robot"></i> AI分析結果
+                                    </div>
+                                    <div class="card-body">
+                                        <div style="max-height: 300px; overflow-y: auto;">
+                                            ${record.aiAnalysis.replace(/\n/g, '<br>')}
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除舊的詳情模態框
+            const existingDetailModal = document.getElementById('conflictDetailModal');
+            if (existingDetailModal) {
+                existingDetailModal.remove();
+            }
+            
+            // 添加新的詳情模態框
+            document.body.insertAdjacentHTML('beforeend', detailHTML);
+            
+            // 顯示詳情模態框
+            const detailModal = new bootstrap.Modal(document.getElementById('conflictDetailModal'));
+            detailModal.show();
+        }
+        
+        // 🗑️ 清除衝突歷史
+        function clearConflictHistory() {
+            if (typeof conflictHistoryManager === 'undefined') return;
+            
+            if (confirm('確定要清除所有衝突歷史記錄嗎？此操作無法恢復。')) {
+                conflictHistoryManager.clearHistory();
+                
+                // 關閉模態框並重新顯示
+                const modal = bootstrap.Modal.getInstance(document.getElementById('conflictHistoryModal'));
+                if (modal) modal.hide();
+                
+                showToast('衝突歷史記錄已清除', 'success');
+                
+                // 延遲重新顯示歷史（現在是空的）
+                setTimeout(() => {
+                    showConflictHistory();
+                }, 500);
+            }
+        }
+
+        // DOMContentLoaded 事件處理
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Python多人協作教學平台載入完成');
+            
+            // 初始化所有模組
+            console.log('🚀 初始化所有模組...');
+            
+            // 初始化UI模組
+            if (typeof UI !== 'undefined' && UI.initialize) {
+                UI.initialize();
+                console.log('✅ UI模組初始化完成');
+            } else {
+                console.error('❌ UI模組初始化失敗');
+            }
+            
+            // 初始化編輯器模組
+            if (typeof Editor !== 'undefined' && Editor.initialize) {
+                Editor.initialize();
+                console.log('✅ 編輯器模組初始化完成');
+            } else {
+                console.error('❌ 編輯器模組初始化失敗');
+            }
+            
+            // 初始化WebSocket管理器
+            if (typeof wsManager !== 'undefined' && wsManager.initialize) {
+                wsManager.initialize();
+                console.log('✅ WebSocket管理器初始化完成');
+            } else {
+                console.error('❌ WebSocket管理器初始化失敗');
+            }
+            
+            // 初始化AI助教
+            if (typeof AIAssistant !== 'undefined' && AIAssistant.initialize) {
+                AIAssistant.initialize();
+                console.log('✅ AI助教模組初始化完成');
+            } else {
+                console.error('❌ AI助教模組初始化失敗');
+            }
+            
+            // 初始化聊天系統
+            if (typeof Chat !== 'undefined' && Chat.initialize) {
+                Chat.initialize();
+                console.log('✅ 聊天系統初始化完成');
+            } else {
+                console.error('❌ 聊天系統初始化失敗');
+            }
+            
+            console.log('✨ 模組初始化完成');
+            
+            // 預設顯示AI助教
+            if (typeof UI !== 'undefined' && UI.switchToAI) {
+                UI.switchToAI();
+                console.log('✅ AI助教已設為預設顯示');
+            } else {
+                console.error('❌ 無法設置預設界面，UI未定義');
+            }
+        });
+    </script>
+</body>
+</html> 

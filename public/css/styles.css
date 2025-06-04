@@ -1,0 +1,323 @@
+/* Python協作教學平台 - 自定義樣式 */
+
+body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.main-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.card-custom {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* 編輯器樣式完全由JavaScript控制 */
+
+/* 聊天室樣式完全由JavaScript控制 */
+
+/* 協作提醒樣式 */
+.collaboration-alert {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+    max-width: 400px;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    animation: slideInRight 0.5s ease;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+/* 衝突檢測模態窗口 */
+.conflict-modal .modal-content {
+    border-radius: 15px;
+    border: 3px solid #dc3545;
+}
+
+.conflict-header {
+    background: linear-gradient(45deg, #dc3545, #c82333);
+    color: white;
+    border-radius: 12px 12px 0 0;
+}
+
+.conflict-option {
+    transition: all 0.3s ease;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+    border: 2px solid transparent;
+    cursor: pointer;
+}
+
+.conflict-option:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.option-reload {
+    background: linear-gradient(45deg, #17a2b8, #138496);
+    color: white;
+}
+
+.option-force {
+    background: linear-gradient(45deg, #ffc107, #e0a800);
+    color: black;
+}
+
+.option-discuss {
+    background: linear-gradient(45deg, #28a745, #1e7e34);
+    color: white;
+}
+
+/* 編輯器衝突警告 */
+.editor-conflict-warning {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #dc3545;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    z-index: 1000;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* 在線用戶指示器 */
+.user-indicator {
+    display: inline-block;
+    padding: 4px 12px;
+    background: #28a745;
+    color: white;
+    border-radius: 15px;
+    font-size: 12px;
+    margin: 2px;
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.system-message {
+    background: #e9ecef;
+    border-left-color: #6c757d;
+    font-style: italic;
+}
+
+.conflict-code-block {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 15px;
+    border-radius: 8px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    border-left: 4px solid #dc3545;
+}
+
+/* AI助教樣式 */
+.ai-analysis {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+}
+
+.ai-suggestion {
+    background: rgba(255,255,255,0.2);
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+/* AI回應卡片樣式 */
+.ai-response-card {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 12px;
+    margin: 15px 0;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    overflow: hidden;
+}
+
+.ai-response-header {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.ai-response-content {
+    padding: 20px;
+}
+
+.ai-response-content h6 {
+    color: #ffffff;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-response-content h7 {
+    color: #f8f9fa;
+    font-weight: 600;
+}
+
+.ai-response-content .alert {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    border-radius: 8px;
+}
+
+.ai-response-content .card {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.ai-response-content .card-body {
+    color: white;
+}
+
+.ai-response-content ul {
+    margin-left: 20px;
+}
+
+.ai-response-content li {
+    margin-bottom: 5px;
+}
+
+/* AI衝突分析樣式 */
+.ai-conflict-analysis {
+    background: linear-gradient(45deg, #dc3545, #c82333);
+    color: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+}
+
+.ai-conflict-analysis .alert {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+/* 成功提示 */
+.success-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #28a745;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    z-index: 1060;
+    animation: slideInDown 0.5s ease, fadeOut 0.5s ease 4.5s;
+}
+
+@keyframes slideInDown {
+    from { transform: translateX(-50%) translateY(-100%); }
+    to { transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes fadeOut {
+    to { opacity: 0; transform: translateX(-50%) translateY(-100%); }
+}
+
+/* 錯誤提示 */
+.error-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #dc3545;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    font-size: 14px;
+    max-width: 300px;
+}
+
+/* 教師廣播樣式 */
+.teacher-broadcast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1070;
+    max-width: 500px;
+    width: 90%;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    animation: zoomIn 0.5s ease;
+}
+
+@keyframes zoomIn {
+    from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+.broadcast-info { background: #d1ecf1; border: 2px solid #bee5eb; color: #0c5460; }
+.broadcast-warning { background: #fff3cd; border: 2px solid #ffeaa7; color: #856404; }
+.broadcast-success { background: #d4edda; border: 2px solid #c3e6cb; color: #155724; }
+.broadcast-error { background: #f8d7da; border: 2px solid #f5c6cb; color: #721c24; }
+
+/* 操作教學樣式 */
+.tutorial-content {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.tutorial-section {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-left: 3px solid #dee2e6;
+    background: #ffffff;
+    border-radius: 0 6px 6px 0;
+}
+
+.tutorial-section h6 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.tutorial-section p {
+    margin-bottom: 0;
+    color: #495057;
+}
+
+.tutorial-section strong {
+    color: #212529;
+    font-weight: 600;
+} 
