@@ -281,6 +281,18 @@ class UIManager {
         }, 5000);
     }
 
+    // 顯示信息提示
+    showInfoToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'info-toast';
+        toast.innerHTML = `<i class="fas fa-info-circle"></i> ${message}`;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.remove();
+        }, 4000);
+    }
+
     // 顯示教師廣播
     showTeacherBroadcast(message) {
         const broadcast = document.createElement('div');

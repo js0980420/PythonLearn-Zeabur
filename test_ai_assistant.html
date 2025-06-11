@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI助教功能測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .test-button { background: #007bff; color: white; border: none; padding: 10px 20px; margin: 5px; border-radius: 3px; cursor: pointer; }
+        .test-button:hover { background: #0056b3; }
+        .result-container { margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 5px; min-height: 100px; }
+        .code-input { width: 100%; height: 150px; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 3px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 3px; }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🤖 AI助教功能測試</h1>
+        
+        <!-- 連接狀態 -->
+        <div class="test-section">
+            <h3>🔌 連接狀態</h3>
+            <div id="connectionStatus" class="status info">正在檢查連接...</div>
+            <button class="test-button" onclick="testConnection()">測試連接</button>
+        </div>
+        
+        <!-- 代碼輸入 -->
+        <div class="test-section">
+            <h3>📝 測試代碼</h3>
+            <textarea id="testCode" class="code-input" placeholder="輸入Python代碼進行測試...">
+# 簡單的Python程式
+def hello_world():
+    print("Hello, World!")
+    return "Hello from function"
+
+# 調用函數
+result = hello_world()
+print(f"函數返回值: {result}")
+
+# 一個簡單的迴圈
+for i in range(3):
+    print(f"迴圈第 {i+1} 次")
+            </textarea>
+        </div>
+        
+        <!-- AI功能測試 -->
+        <div class="test-section">
+            <h3>🧠 AI助教功能測試</h3>
+            <div>
+                <button class="test-button" onclick="testAIFunction('analyze')">🔍 解釋程式</button>
+                <button class="test-button" onclick="testAIFunction('check_errors')">🐛 檢查錯誤</button>
+                <button class="test-button" onclick="testAIFunction('improvement_tips')">💡 改進建議</button>
+                <button class="test-button" onclick="testAIFunction('collaboration_guide')">👥 協作指導</button>
+            </div>
+            <div id="aiTestStatus" class="status info" style="display: none;">正在測試AI功能...</div>
+            <div id="aiTestResult" class="result-container"></div>
+        </div>
+        
+        <!-- 手動API測試 -->
+        <div class="test-section">
+            <h3>🔧 手動API測試</h3>
+            <div>
+                <button class="test-button" onclick="testAPIDirectly()">直接測試OpenAI API</button>
+                <button class="test-button" onclick="checkAPIKey()">檢查API密鑰</button>
+            </div>
+            <div id="apiTestResult" class="result-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // 測試連接
+        async function testConnection() {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.textContent = '正在測試連接...';
+            statusDiv.className = 'status info';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.textContent = `✅ 連接成功！服務器狀態: ${data.status || '正常'}`;
+                    statusDiv.className = 'status success';
+                } else {
+                    statusDiv.textContent = `❌ 連接失敗！HTTP狀態: ${response.status}`;
+                    statusDiv.className = 'status error';
+                }
+            } catch (error) {
+                statusDiv.textContent = `❌ 連接錯誤: ${error.message}`;
+                statusDiv.className = 'status error';
+            }
+        }
+        
+        // 測試AI功能
+        async function testAIFunction(action) {
+            const statusDiv = document.getElementById('aiTestStatus');
+            const resultDiv = document.getElementById('aiTestResult');
+            const code = document.getElementById('testCode').value;
+            
+            if (!code.trim()) {
+                alert('請先輸入測試代碼');
+                return;
+            }
+            
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = `正在測試 ${action} 功能...`;
+            statusDiv.className = 'status info';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/ai-test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: action,
+                        code: code
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    statusDiv.textContent = `✅ ${action} 測試成功！`;
+                    statusDiv.className = 'status success';
+                    resultDiv.innerHTML = `
+                        <h4>AI回應結果:</h4>
+                        <div style="white-space: pre-wrap; background: white; padding: 15px; border-radius: 3px; border: 1px solid #ddd;">
+                            ${data.response}
+                        </div>
+                        <small style="color: #666; margin-top: 10px; display: block;">
+                            響應時間: ${data.responseTime || 'N/A'}ms | 
+                            代碼長度: ${code.length} 字符
+                        </small>
+                    `;
+                } else {
+                    statusDiv.textContent = `❌ ${action} 測試失敗: ${data.error || '未知錯誤'}`;
+                    statusDiv.className = 'status error';
+                    resultDiv.innerHTML = `
+                        <h4>錯誤詳情:</h4>
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 3px; border: 1px solid #ffeaa7;">
+                            ${data.error || '測試失敗，請檢查服務器日誌'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.textContent = `❌ 測試錯誤: ${error.message}`;
+                statusDiv.className = 'status error';
+                resultDiv.innerHTML = `
+                    <h4>網路錯誤:</h4>
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 3px; border: 1px solid #f5c6cb;">
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 直接測試API
+        async function testAPIDirectly() {
+            const resultDiv = document.getElementById('apiTestResult');
+            resultDiv.innerHTML = '正在直接測試OpenAI API...';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/ai-config');
+                const config = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h4>AI配置信息:</h4>
+                    <div style="background: white; padding: 15px; border-radius: 3px; border: 1px solid #ddd;">
+                        <strong>API密鑰狀態:</strong> ${config.hasApiKey ? '✅ 已設置' : '❌ 未設置'}<br>
+                        <strong>模型:</strong> ${config.model || 'N/A'}<br>
+                        <strong>最大令牌:</strong> ${config.maxTokens || 'N/A'}<br>
+                        <strong>溫度:</strong> ${config.temperature || 'N/A'}<br>
+                        <strong>AI功能狀態:</strong> ${config.enabled ? '✅ 啟用' : '❌ 停用'}
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h4>配置檢查失敗:</h4>
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 3px;">
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 檢查API密鑰
+        async function checkAPIKey() {
+            const resultDiv = document.getElementById('apiTestResult');
+            resultDiv.innerHTML = '正在檢查API密鑰有效性...';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/ai-validate');
+                const data = await response.json();
+                
+                if (data.valid) {
+                    resultDiv.innerHTML = `
+                        <h4>✅ API密鑰驗證成功</h4>
+                        <div style="background: #d4edda; padding: 15px; border-radius: 3px;">
+                            API密鑰有效，AI助教功能可正常使用
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h4>❌ API密鑰驗證失敗</h4>
+                        <div style="background: #f8d7da; padding: 15px; border-radius: 3px;">
+                            ${data.error || 'API密鑰無效或已過期'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h4>驗證過程出錯:</h4>
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 3px;">
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 頁面載入時自動測試連接
+        window.addEventListener('load', () => {
+            testConnection();
+        });
+    </script>
+</body>
+</html> 

@@ -6,6 +6,88 @@ class AIAssistantManager {
         this.shareOptions = document.getElementById('aiShareOptions');
         this.isFirstPrompt = true; // 用於判斷是否是初始提示狀態
         this.isProcessing = false; // 防止重複請求
+        this.isEnabled = true;
+        this.isRequesting = false;
+        this.lastResponse = '';
+        this.chatScrollPosition = 0;
+        
+        // 映射AI功能到友好的中文名稱
+        this.actionNames = {
+            'analyze': 'AI 程式解釋',
+            'check': 'AI 錯誤檢查', 
+            'suggest': 'AI 改進建議',
+            'resolve': 'AI 衝突協助',
+            'run_code': 'AI 代碼運行',
+            // 新增 MCP 工具功能
+            'web_automation': 'Web 自動化',
+            'git_operations': 'Git 版本控制',
+            'file_management': '檔案系統管理',
+            'database_query': '資料庫查詢',
+            'api_testing': 'API 測試',
+            'cloud_deploy': '雲端部署',
+            'code_analysis': '程式碼分析',
+            'team_chat': '團隊協作',
+            'security_scan': '安全檢測'
+        };
+
+        this.mcpTools = {
+            'web_automation': {
+                name: 'Web 自動化 (Playwright)',
+                icon: 'fas fa-robot',
+                description: '使用 Playwright 進行網頁自動化測試和爬蟲',
+                examples: ['自動填寫表單', '網頁截圖', '元素點擊', '數據抓取']
+            },
+            'git_operations': {
+                name: 'Git 版本控制',
+                icon: 'fab fa-git-alt',
+                description: 'Git 操作：提交、分支、合併、歷史查看',
+                examples: ['查看提交歷史', '創建分支', '合併代碼', '解決衝突']
+            },
+            'file_management': {
+                name: '檔案系統管理',
+                icon: 'fas fa-folder-open',
+                description: '檔案和目錄操作：創建、讀取、寫入、搜尋',
+                examples: ['列出檔案', '讀取內容', '批量處理', '檔案搜尋']
+            },
+            'database_query': {
+                name: '資料庫查詢',
+                icon: 'fas fa-database',
+                description: 'MySQL/PostgreSQL 資料庫操作和查詢',
+                examples: ['執行 SQL', '表格操作', '數據分析', '備份還原']
+            },
+            'api_testing': {
+                name: 'API 測試',
+                icon: 'fas fa-exchange-alt',
+                description: 'REST API 測試和 HTTP 請求',
+                examples: ['GET/POST 請求', '測試 API', '響應解析', '狀態檢查']
+            },
+            'cloud_deploy': {
+                name: '雲端部署',
+                icon: 'fas fa-cloud-upload-alt',
+                description: 'AWS/Azure/GCP 雲端服務操作',
+                examples: ['部署應用', '監控服務', '配置管理', '日誌查看']
+            },
+            'code_analysis': {
+                name: '程式碼分析',
+                icon: 'fas fa-search-plus',
+                description: '程式碼品質分析和重構建議',
+                examples: ['複雜度分析', '性能檢測', '重構建議', '最佳實踐']
+            },
+            'team_chat': {
+                name: '團隊協作',
+                icon: 'fas fa-comments',
+                description: 'Slack/Discord 團隊溝通整合',
+                examples: ['發送訊息', '檔案分享', '會議安排', '任務追蹤']
+            },
+            'security_scan': {
+                name: '安全檢測',
+                icon: 'fas fa-shield-alt',
+                description: '程式碼安全掃描和漏洞檢測',
+                examples: ['漏洞掃描', '依賴檢查', '安全評估', '修復建議']
+            }
+        };
+        
+        this.initializeUI();
     }
 
     // 初始化AI助教
@@ -99,6 +181,9 @@ class AIAssistantManager {
             case 'suggest':
                 apiAction = 'suggest';
                 break;
+            case 'run_code':
+                apiAction = 'run_code';
+                break;
             case 'collaboration_guide':
                 // 協作指南使用本地回應，顯示操作教學
                 this.showResponse(this.getCollaborationGuide());
@@ -143,7 +228,8 @@ class AIAssistantManager {
             'analyze': '程式碼分析',
             'code_review': '程式碼審查',
             'suggest': '改進建議',
-            'improvement_tips': '優化建議'
+            'improvement_tips': '優化建議',
+            'run_code': 'AI代碼運行'
         };
 
         const actionName = actionNames[action] || 'AI分析';
@@ -825,6 +911,12 @@ class AIAssistantManager {
 // 創建全域AI助教實例
 const AIAssistant = new AIAssistantManager();
 
+// 同時設置為window全域變數，確保在任何地方都能存取
+window.AIAssistant = AIAssistant;
+
+console.log('🔧 AI助教管理器已創建');
+console.log('✅ 全域 AIAssistant 實例已創建並設置到 window:', AIAssistant);
+
 // 全域函數供HTML調用
 function askAI(action) {
     AIAssistant.requestAnalysis(action);
@@ -845,4 +937,37 @@ function showShareOptions() {
 // 新增：顯示AI助教介紹
 function showAIIntro() {
     AIAssistant.showAIIntroduction();
-} 
+}
+
+// 全域函數（與HTML中的按鈕onclick事件對應）
+function globalAskAI(action) {
+    if (window.AIAssistant) {
+        window.AIAssistant.requestAnalysis(action);
+    } else {
+        console.error("AIAssistant 尚未初始化");
+        if (typeof showToast === 'function') {
+            showToast('AI助教尚未載入完成，請稍後再試', 'warning');
+        }
+    }
+}
+
+function globalShareAIResponse() {
+    if (window.AIAssistant) {
+        window.AIAssistant.shareResponse();
+    } else {
+        console.error("AIAssistant 尚未初始化");
+    }
+}
+
+function globalHideShareOptions() {
+    if (window.AIAssistant) {
+        window.AIAssistant.hideShareOptions();
+    } else {
+        console.error("AIAssistant 尚未初始化");
+    }
+}
+
+// 將全域函數也設置到window物件
+window.globalAskAI = globalAskAI;
+window.globalShareAIResponse = globalShareAIResponse;
+window.globalHideShareOptions = globalHideShareOptions; 

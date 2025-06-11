@@ -84,17 +84,11 @@ try {
 // 數據庫初始化函數
 async function initializeDatabase(connection) {
     try {
-        // 創建用戶表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )
-        `);
-
-        // 創建房間表
+        console.log('🔧 開始初始化數據庫表...');
+        
+        // 首先創建基礎表（無外鍵依賴）
+        
+        // 1. 創建房間表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS rooms (
                 id VARCHAR(100) PRIMARY KEY,
@@ -102,53 +96,22 @@ async function initializeDatabase(connection) {
                 current_code_version INT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
+        console.log('✅ 房間表創建成功');
 
-        // 創建代碼歷史表
+        // 2. 創建用戶表
         await connection.execute(`
-            CREATE TABLE IF NOT EXISTS code_history (
+            CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id INT,
-                code_content TEXT,
-                version INT,
-                save_name VARCHAR(100),
+                username VARCHAR(50) NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
+        console.log('✅ 用戶表創建成功');
 
-        // 創建聊天消息表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS chat_messages (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id INT,
-                message_content TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        `);
-
-        // 創建AI請求記錄表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS ai_requests (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id INT,
-                request_type VARCHAR(50),
-                code_content TEXT,
-                ai_response TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        `);
-
-        // 創建用戶名稱使用記錄表
+        // 3. 創建用戶名稱使用記錄表（無外鍵約束，避免複雜依賴）
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS user_names (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -159,13 +122,67 @@ async function initializeDatabase(connection) {
                 UNIQUE KEY unique_user_room (user_id, room_id),
                 INDEX idx_user_name (user_name),
                 INDEX idx_room_id (room_id)
-            )
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
+        console.log('✅ 用戶名稱記錄表創建成功');
 
-        console.log('✅ 數據庫表初始化完成');
+        // 4. 創建代碼歷史表（可選外鍵約束）
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS code_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                code_content TEXT,
+                version INT,
+                save_name VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✅ 代碼歷史表創建成功');
+
+        // 5. 創建聊天消息表（可選外鍵約束）
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                message_content TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✅ 聊天消息表創建成功');
+
+        // 6. 創建AI請求記錄表（可選外鍵約束）
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS ai_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                request_type VARCHAR(50),
+                code_content TEXT,
+                ai_response TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id),
+                INDEX idx_request_type (request_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✅ AI請求記錄表創建成功');
+
+        console.log('✅ 數據庫表初始化完成 - 所有表創建成功');
+        
+        // 檢查表狀態
+        const [tables] = await connection.execute('SHOW TABLES');
+        console.log(`📊 當前數據庫包含 ${tables.length} 個表:`, tables.map(t => Object.values(t)[0]).join(', '));
+        
     } catch (error) {
-        console.error('❌ 數據庫表初始化失敗:', error);
-        throw error;
+        console.error('❌ 數據庫表初始化失敗:', error.message);
+        console.log('🔄 將使用本地存儲模式繼續運行');
+        // 不再拋出錯誤，允許服務器繼續以本地模式運行
     }
 }
 
@@ -194,11 +211,20 @@ let serverStartTime = Date.now();
 let conflictCounter = 0;
 let activeEditors = new Set();
 
-// 載入AI配置
+// 載入AI配置 - 優先使用ai_config.json文件
 let aiConfig = {};
 try {
-    // 優先使用環境變數配置（適合生產環境）
-    if (process.env.OPENAI_API_KEY) {
+    // 優先嘗試載入配置文件（本地開發優先）
+    const configPath = path.join(__dirname, 'ai_config.json');
+    if (fs.existsSync(configPath)) {
+        const configData = fs.readFileSync(configPath, 'utf8');
+        aiConfig = JSON.parse(configData);
+        console.log('✅ 使用 ai_config.json 文件配置');
+        console.log(`🔑 API密鑰狀態: ${aiConfig.openai_api_key ? '已設定' : '未設定'}`);
+        console.log(`🤖 模型: ${aiConfig.model || 'gpt-3.5-turbo'}`);
+        console.log(`⚙️ AI功能狀態: ${aiConfig.enabled ? '啟用' : '停用'}`);
+    } else if (process.env.OPENAI_API_KEY) {
+        // 如果沒有配置文件，才使用環境變數配置（適合生產環境）
         aiConfig = {
             openai_api_key: process.env.OPENAI_API_KEY,
             model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
@@ -227,23 +253,12 @@ try {
         console.log(`🤖 模型: ${aiConfig.model}`);
         console.log(`⚙️ AI功能狀態: 啟用`);
     } else {
-        // 如果沒有環境變數，嘗試載入配置文件
-        const configPath = path.join(__dirname, 'ai_config.json');
-        if (fs.existsSync(configPath)) {
-            const configData = fs.readFileSync(configPath, 'utf8');
-            aiConfig = JSON.parse(configData);
-            console.log('✅ AI配置檔案載入成功');
-            console.log(`🔑 API密鑰狀態: ${aiConfig.openai_api_key ? '已設定' : '未設定'}`);
-            console.log(`🤖 模型: ${aiConfig.model || 'gpt-3.5-turbo'}`);
-            console.log(`⚙️ AI功能狀態: ${aiConfig.enabled ? '啟用' : '停用'}`);
-        } else {
-            console.log('⚠️ 未設定AI配置，AI助教功能將停用');
-            aiConfig = {
-                openai_api_key: '',
-                model: 'gpt-3.5-turbo',
-                enabled: false
-            };
-        }
+        console.log('⚠️ 未找到 ai_config.json 文件且未設定環境變數，AI助教功能將停用');
+        aiConfig = {
+            openai_api_key: '',
+            model: 'gpt-3.5-turbo',
+            enabled: false
+        };
     }
 } catch (error) {
     console.error('❌ 載入AI配置失敗:', error.message);
@@ -278,17 +293,18 @@ app.get('/', (req, res) => {
 });
 
 app.get('/teacher', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'teacher-dashboard.html'));
+    res.sendFile(path.join(__dirname, 'public', 'teacher.html'));
 });
 
 // API狀態端點
 app.get('/api/status', (req, res) => {
     res.json({
         status: 'running',
-        uptime: Date.now() - serverStartTime,
-        connections: connectionCount,
-        rooms: Object.keys(rooms).length,
-        version: '2.1.0'
+        timestamp: new Date().toISOString(),
+        version: '2.1.0',
+        ai_enabled: aiConfig.enabled,
+        rooms_count: Object.keys(rooms).length,
+        users_count: Object.keys(users).length
     });
 });
 
@@ -362,7 +378,7 @@ app.get('/api/teacher/rooms', (req, res) => {
     console.log(`📊 教師監控統計 - 總連接: ${actualConnections}, 房間學生: ${studentsInRooms}, 非教師用戶: ${nonTeacherUsers}`);
     
     res.json({
-        rooms: Object.values(rooms),
+        rooms: roomsData, // 使用處理過的房間數據而不是原始數據
         totalRooms: Object.keys(rooms).length,
         totalUsers: actualConnections, // 總連接數
         studentsInRooms: studentsInRooms, // 房間內學生數
@@ -654,6 +670,30 @@ async function handleMessage(ws, message) {
             handleConflictNotification(ws, message);
             break;
 
+        case 'teacher_monitor':
+            handleTeacherMonitor(ws, message);
+            break;
+
+        case 'teacher_broadcast':
+            handleTeacherBroadcast(ws, message);
+            break;
+
+        case 'teacher_chat':
+            handleTeacherChat(ws, message);
+            break;
+
+        case 'run_code':
+            handleRunCode(ws, message);
+            break;
+
+        case 'load_code':
+            await handleLoadCode(ws, message);
+            break;
+
+        case 'save_code':
+            await handleSaveCode(ws, message);
+            break;
+
         default:
             console.warn(`⚠️ 未知消息類型: ${message.type} from ${ws.userId}`);
             
@@ -889,6 +929,39 @@ async function handleChatMessage(ws, message) {
         type: 'chat_message',
         ...chatMessage
     });
+}
+
+// 教師監控註冊處理
+function handleTeacherMonitor(ws, message) {
+    const action = message.data?.action;
+    
+    if (action === 'register') {
+        // 註冊為教師監控
+        teacherMonitors.add(ws.userId);
+        users[ws.userId].isTeacher = true;
+        
+        console.log(`👨‍🏫 教師監控已註冊: ${ws.userId}`);
+        
+        // 發送歡迎消息
+        ws.send(JSON.stringify({
+            type: 'welcome',
+            userId: ws.userId,
+            message: '教師監控已連接',
+            timestamp: Date.now()
+        }));
+        
+        // 發送當前統計信息
+        broadcastStatsToTeachers();
+        
+    } else if (action === 'unregister') {
+        // 取消註冊教師監控
+        teacherMonitors.delete(ws.userId);
+        if (users[ws.userId]) {
+            users[ws.userId].isTeacher = false;
+        }
+        
+        console.log(`👨‍🏫 教師監控已取消註冊: ${ws.userId}`);
+    }
 }
 
 // 教師廣播處理
@@ -1170,18 +1243,15 @@ function executePythonCode(code, callback) {
                             output: output.trim()
                         });
                     } else {
-                        // 無輸出內容，提供說明
-                        const helpMessage = `程式執行完成（無輸出）
-💡 提示：如果想要看到輸出結果，可以嘗試：
-• 使用 print() 函數：print("Hello World")
-• 顯示變數值：print(變數名稱)
-• 顯示計算結果：print(5 + 3)
-• 列印內容：print("您的訊息")`;
+                        // 無輸出內容，嘗試智能分析並提供建議
+                        console.log(`🔍 程式執行成功但無輸出，分析代碼內容...`);
                         
-                        console.log(`✅ 執行成功但無輸出，已提供幫助說明`);
+                        let smartHelpMessage = analyzeCodeForOutput(code);
+                        
+                        console.log(`✅ 執行成功但無輸出，已提供智能建議`);
                         callback({
                             success: true,
-                            output: helpMessage
+                            output: smartHelpMessage
                         });
                     }
                 } else {
@@ -1248,6 +1318,83 @@ function executePythonCode(code, callback) {
             });
         }
     }
+}
+
+// 智能分析無輸出代碼並提供建議
+function analyzeCodeForOutput(code) {
+    const lines = code.trim().split('\n');
+    const lastLine = lines[lines.length - 1].trim();
+    const variables = [];
+    const calculations = [];
+    
+    // 分析代碼中的變數賦值和計算
+    lines.forEach((line, index) => {
+        const trimmedLine = line.trim();
+        
+        // 檢測變數賦值 (排除函數定義和控制結構)
+        const assignmentMatch = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+        if (assignmentMatch && 
+            !trimmedLine.startsWith('def ') && 
+            !trimmedLine.includes('if ') && 
+            !trimmedLine.includes('for ') && 
+            !trimmedLine.includes('while ')) {
+            
+            const varName = assignmentMatch[1];
+            const value = assignmentMatch[2];
+            
+            variables.push(varName);
+            
+            // 檢測是否是計算表達式
+            if (/[\+\-\*\/\%\*\*]/.test(value) || /\d/.test(value)) {
+                calculations.push({ varName, expression: value, lineNumber: index + 1 });
+            }
+        }
+    });
+    
+    // 生成智能建議
+    let message = '程式執行完成（無顯示輸出）\n\n';
+    
+    if (calculations.length > 0) {
+        // 有計算結果的變數
+        message += '🔢 **發現計算結果，建議顯示：**\n';
+        calculations.forEach(calc => {
+            message += `• 第${calc.lineNumber}行：${calc.varName} = ${calc.expression}\n`;
+            message += `  建議加上：print("${calc.varName} =", ${calc.varName})\n`;
+        });
+        
+        // 提供完整的改進代碼
+        message += '\n📝 **完整的建議代碼：**\n```python\n';
+        lines.forEach(line => {
+            message += line + '\n';
+        });
+        
+        // 為最重要的變數添加print語句
+        const mainVar = calculations[calculations.length - 1]; // 最後一個計算
+        message += `print("${mainVar.varName} =", ${mainVar.varName})\n`;
+        message += '```\n';
+        
+    } else if (variables.length > 0) {
+        // 有變數但沒有計算
+        message += '📦 **發現變數賦值，建議顯示：**\n';
+        variables.slice(-3).forEach(varName => { // 只顯示最後3個變數
+            message += `• print("${varName} =", ${varName})\n`;
+        });
+        
+    } else {
+        // 沒有變數，提供一般建議
+        message += '💡 **程式碼執行建議：**\n';
+        message += '• 使用 print() 來顯示結果：print("Hello World")\n';
+        message += '• 顯示計算結果：print(5 + 3)\n';
+        message += '• 顯示變數值：print(變數名稱)\n';
+    }
+    
+    // 添加常用範例
+    message += '\n💡 **常用顯示範例：**\n';
+    message += '• 顯示文字：print("歡迎使用Python！")\n';
+    message += '• 顯示計算：print("答案是:", 2 + 3)\n';
+    message += '• 顯示變數：print("x的值是:", x)\n';
+    
+    return message;
 }
 
 // AI 請求處理函數
@@ -1329,6 +1476,9 @@ async function handleAIRequest(ws, message) {
             case 'improvement_tips': // 前端別名映射
                 response = await improveCode(code);
                 break;
+            case 'run_code':       // 新增：AI運行代碼分析
+                response = await runCodeWithAI(code);
+                break;
             case 'conflict_resolution':
             case 'conflict_analysis':  // 新增：支持 conflict_analysis 動作
             case 'resolve':        // 前端別名映射 - 衝突協助
@@ -1375,7 +1525,7 @@ async function handleAIRequest(ws, message) {
                 response = await guideCollaboration(code, { userName: user.name, roomId: user.roomId });
                 break;
             default:
-                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors/check)、改進建議(improve_code/suggest)、衝突協助(conflict_resolution/resolve)、協作指導(collaboration_guide)`;
+                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors/check)、改進建議(improve_code/suggest)、運行分析(run_code)、衝突協助(conflict_resolution/resolve)、協作指導(collaboration_guide)`;
                 error = 'unknown_action';
         }
         
@@ -1637,6 +1787,198 @@ async function improveCode(code) {
             return '😅 抱歉，AI改進建議功能暫時無法使用。請稍後再試。';
         }
     }
+}
+
+// AI運行代碼分析
+async function runCodeWithAI(code) {
+    if (!code.trim()) {
+        return '📝 請先在編輯器中輸入一些 Python 程式碼，然後再使用 AI 運行代碼功能！';
+    }
+    
+    console.log(`🐍 [runCodeWithAI] 開始執行Python代碼: ${code.substring(0, 100)}...`);
+    
+    // 首先嘗試實際執行Python代碼
+    return new Promise((resolve) => {
+        executePythonCode(code, async (executionResult) => {
+            console.log(`📋 [runCodeWithAI] Python執行結果:`, executionResult);
+            
+            let finalResponse = '';
+            
+            if (executionResult.success) {
+                // 執行成功
+                finalResponse = `🐍 **Python 代碼執行結果**
+
+**✅ 執行成功！**
+
+**📝 代碼：**
+\`\`\`python
+${code}
+\`\`\`
+
+**🖥️ 輸出結果：**
+\`\`\`
+${executionResult.output}
+\`\`\`
+
+**💡 執行說明：**
+程式碼已在服務器上成功執行並返回結果。`;
+                
+                // 如果配置了AI，添加AI分析
+                if (aiConfig.openai_api_key) {
+                    try {
+                        console.log(`🤖 [runCodeWithAI] 正在請求AI分析執行結果...`);
+                        const aiAnalysis = await getAIAnalysis(code, executionResult.output);
+                        finalResponse += `
+
+**🤖 AI 助教分析：**
+${aiAnalysis}`;
+                    } catch (error) {
+                        console.error(`❌ [runCodeWithAI] AI分析錯誤:`, error);
+                    }
+                }
+                
+            } else {
+                // 執行失敗
+                finalResponse = `🐍 **Python 代碼執行結果**
+
+**❌ 執行出現錯誤**
+
+**📝 代碼：**
+\`\`\`python
+${code}
+\`\`\`
+
+**🚨 錯誤信息：**
+\`\`\`
+${executionResult.output}
+\`\`\`
+
+**💡 錯誤解決建議：**
+1. 檢查語法是否正確（括號、縮進、拼寫）
+2. 確認變數名稱是否正確
+3. 檢查是否遺漏了必要的函數或語句
+4. 對於變數賦值結果，使用 print() 來顯示： \`print(x)\``;
+                
+                // 如果配置了AI，請求錯誤分析
+                if (aiConfig.openai_api_key) {
+                    try {
+                        console.log(`🤖 [runCodeWithAI] 正在請求AI錯誤分析...`);
+                        const aiErrorAnalysis = await getAIErrorAnalysis(code, executionResult.output);
+                        finalResponse += `
+
+**🤖 AI 助教診斷：**
+${aiErrorAnalysis}`;
+                    } catch (error) {
+                        console.error(`❌ [runCodeWithAI] AI錯誤分析失敗:`, error);
+                    }
+                }
+            }
+            
+            resolve(finalResponse);
+        });
+    });
+}
+
+// AI分析執行結果（輔助函數）
+async function getAIAnalysis(code, output) {
+    const analysisPrompt = `
+作為Python程式設計助教，請分析以下已執行的程式碼和輸出結果：
+
+程式碼：
+\`\`\`python
+${code}
+\`\`\`
+
+實際輸出：
+\`\`\`
+${output}
+\`\`\`
+
+請提供：
+1. **結果解釋：** 解釋這個輸出結果的含義
+2. **程式邏輯：** 說明程式是如何得到這個結果的
+3. **知識點：** 這段程式碼涉及哪些Python概念
+4. **擴展建議：** 可以如何改進或擴展這段程式碼
+
+請用繁體中文回答，語氣友善且具教育性。
+`;
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${aiConfig.openai_api_key}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: aiConfig.model,
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是一位經驗豐富的Python程式設計助教，專門協助學生理解程式碼執行結果。'
+                },
+                {
+                    role: 'user',
+                    content: analysisPrompt
+                }
+            ],
+            max_tokens: aiConfig.max_tokens,
+            temperature: 0.3
+        })
+    });
+    
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
+
+// AI錯誤分析（輔助函數）
+async function getAIErrorAnalysis(code, errorOutput) {
+    const errorPrompt = `
+作為Python程式設計助教，請幫助學生分析以下程式碼的錯誤：
+
+程式碼：
+\`\`\`python
+${code}
+\`\`\`
+
+錯誤信息：
+\`\`\`
+${errorOutput}
+\`\`\`
+
+請提供：
+1. **錯誤原因：** 用簡單的話解釋為什麼會出現這個錯誤
+2. **修正方法：** 提供具體的修正建議和修正後的程式碼
+3. **預防措施：** 如何避免類似錯誤
+4. **相關概念：** 涉及的Python基礎概念說明
+
+請用繁體中文回答，提供清楚的解決方案，語氣要鼓勵學習。
+`;
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${aiConfig.openai_api_key}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: aiConfig.model,
+            messages: [
+                {
+                    role: 'system',
+                    content: '你是一位耐心的Python程式設計助教，專門幫助學生理解和修正程式錯誤。'
+                },
+                {
+                    role: 'user',
+                    content: errorPrompt
+                }
+            ],
+            max_tokens: aiConfig.max_tokens,
+            temperature: 0.3
+        })
+    });
+    
+    const data = await response.json();
+    return data.choices[0].message.content;
 }
 
 // AI協作指導
@@ -1923,15 +2265,15 @@ loadDataFromFile();
 
 // 啟動服務器
 // Zeabur 和其他雲平台的端口處理
-let PORT = process.env.PORT || process.env.WEB_PORT || 8080;
+let PORT = process.env.PORT || process.env.WEB_PORT || 3000;
 
 // 如果 PORT 是字符串形式的環境變數引用，嘗試解析
 if (typeof PORT === 'string' && PORT.includes('WEB_PORT')) {
-    PORT = process.env.WEB_PORT || 8080;
+    PORT = process.env.WEB_PORT || 3000;
 }
 
 // 確保 PORT 是數字
-PORT = parseInt(PORT) || 8080;
+PORT = parseInt(PORT) || 3000;
 
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -2389,3 +2731,139 @@ function handleConflictNotification(ws, message) {
         }));
     }
 }
+
+// API密鑰驗證端點
+app.post('/api/ai-validate', async (req, res) => {
+    console.log('🔑 [API Validate] 驗證API密鑰...');
+    
+    if (!aiConfig.openai_api_key) {
+        return res.json({
+            valid: false,
+            error: 'API密鑰未設置'
+        });
+    }
+    
+    try {
+        // 發送一個簡單的測試請求到OpenAI
+        const testResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: aiConfig.model,
+                messages: [
+                    {
+                        role: 'user',
+                        content: 'Test connection - please respond with "OK"'
+                    }
+                ],
+                max_tokens: 10,
+                temperature: 0
+            })
+        });
+        
+        if (testResponse.ok) {
+            console.log('✅ [API Validate] API密鑰驗證成功');
+            res.json({
+                valid: true,
+                message: 'API密鑰驗證成功'
+            });
+        } else {
+            const errorData = await testResponse.json().catch(() => ({}));
+            console.log(`❌ [API Validate] API密鑰驗證失敗: ${testResponse.status}`);
+            res.json({
+                valid: false,
+                error: `API驗證失敗: ${testResponse.status} - ${errorData.error?.message || 'Unknown error'}`
+            });
+        }
+        
+    } catch (error) {
+        console.error(`❌ [API Validate] API密鑰驗證錯誤: ${error.message}`);
+        res.json({
+            valid: false,
+            error: `驗證過程出錯: ${error.message}`
+        });
+    }
+});
+
+// AI功能直接測試端點
+app.post('/api/ai-test', async (req, res) => {
+    const { action, code } = req.body;
+    const startTime = Date.now();
+    
+    console.log(`🧪 [API Test] 收到AI測試請求: ${action}, 代碼長度: ${code ? code.length : 0}`);
+    
+    if (!aiConfig.enabled || !aiConfig.openai_api_key) {
+        return res.json({
+            success: false,
+            error: 'AI功能未啟用或API密鑰未設置'
+        });
+    }
+    
+    if (!code || code.trim() === '') {
+        return res.json({
+            success: false,
+            error: '代碼不能為空'
+        });
+    }
+    
+    try {
+        let response = '';
+        
+        switch (action) {
+            case 'analyze':
+                response = await analyzeCode(code);
+                break;
+            case 'check_errors':
+                response = await debugCode(code);
+                break;
+            case 'improvement_tips':
+                response = await improveCode(code);
+                break;
+            case 'collaboration_guide':
+                response = await guideCollaboration(code, { userName: 'TestUser', roomId: 'test-room' });
+                break;
+            default:
+                return res.json({
+                    success: false,
+                    error: `不支持的動作類型: ${action}`
+                });
+        }
+        
+        const responseTime = Date.now() - startTime;
+        console.log(`✅ [API Test] AI測試成功: ${action}, 響應時間: ${responseTime}ms`);
+        
+        res.json({
+            success: true,
+            response: response,
+            responseTime: responseTime,
+            action: action
+        });
+        
+    } catch (error) {
+        console.error(`❌ [API Test] AI測試失敗: ${action}, 錯誤: ${error.message}`);
+        res.json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// AI配置查看端點
+app.get('/api/ai-config', (req, res) => {
+    res.json({
+        hasApiKey: !!(aiConfig.openai_api_key),
+        model: aiConfig.model,
+        maxTokens: aiConfig.max_tokens,
+        temperature: aiConfig.temperature,
+        enabled: aiConfig.enabled,
+        features: aiConfig.features
+    });
+});
+
+// 測試頁面路由
+app.get('/test-ai', (req, res) => {
+    res.sendFile(path.join(__dirname, 'test_ai_assistant.html'));
+});

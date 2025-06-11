@@ -9,14 +9,34 @@ class ConflictResolverManager {
 
     // 初始化衝突解決器
     initialize() {
+        // 確保 DOM 已載入
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.initializeModal();
+            });
+        } else {
+            this.initializeModal();
+        }
+        console.log('✅ ConflictResolver initialized');
+    }
+    
+    // 初始化模態框元素
+    initializeModal() {
         this.modalElement = document.getElementById('conflictModal');
         if (!this.modalElement) {
             console.error('❌ Conflict modal element #conflictModal not found during initialization!');
+            // 嘗試在後續操作中重新獲取
+            setTimeout(() => {
+                this.modalElement = document.getElementById('conflictModal');
+                if (this.modalElement) {
+                    console.log('✅ ConflictResolver modal element found after retry');
+                } else {
+                    console.error('❌ ConflictResolver modal element still not found');
+                }
+            }, 1000);
         } else {
             console.log('✅ ConflictResolver modal element found');
         }
-        // Bootstrap modal instance (this.modal) will be managed in showConflictModal
-        console.log('✅ ConflictResolver initialized. Modal element cached.');
     }
 
     // 顯示衝突解決模態框
@@ -305,8 +325,15 @@ class ConflictResolverManager {
         
         // 顯示模態框
         if (!this.modalElement) {
+            console.warn('⚠️ 模態框元素未初始化，嘗試重新獲取...');
+            this.modalElement = document.getElementById('conflictModal');
+        }
+        
+        if (!this.modalElement) {
             console.error('❌ 模態框元素未找到');
             this.showEditorWarning();
+            // 降級處理：使用 alert
+            alert(`協作衝突！${remoteUserName || '其他同學'}也在修改程式碼。請檢查差異後決定如何處理。`);
             return;
         }
 
@@ -1043,17 +1070,32 @@ class ConflictResolverManager {
 const ConflictResolver = new ConflictResolverManager();
 window.ConflictResolver = ConflictResolver;
 
-// 全局函數供HTML調用
+// 全域函數供HTML調用
 function resolveConflict(solution) {
     ConflictResolver.resolveConflict(solution);
 }
 
 function askAIForConflictHelp() {
     if (ConflictResolver) {
-    ConflictResolver.requestAIAnalysis();
+        ConflictResolver.requestAIAnalysis();
     } else {
         console.error('ConflictResolver not available');
     }
-} 
+}
+
+// 全域函數（與HTML中的按鈕onclick事件對應）
+function globalAskAIForConflictHelp() {
+    if (window.ConflictResolver) {
+        window.ConflictResolver.requestAIAnalysis();
+    } else {
+        console.error("ConflictResolver 尚未初始化");
+        if (typeof showToast === 'function') {
+            showToast('衝突解決器尚未載入完成，請稍後再試', 'warning');
+        }
+    }
+}
+
+// 將全域函數設置到window物件
+window.globalAskAIForConflictHelp = globalAskAIForConflictHelp; 
 
 console.log('✅ 全域 ConflictResolver 實例已創建:', window.ConflictResolver); 

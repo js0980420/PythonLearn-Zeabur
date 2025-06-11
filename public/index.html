@@ -105,7 +105,7 @@
                     <div class="text-center">
                         <hr class="my-3">
                         <p class="text-muted mb-2">教師專用</p>
-                        <button class="btn btn-outline-warning" onclick="globalOpenTeacherDashboard()"><i class="fas fa-chalkboard-teacher"></i> 教師監控後台</button>
+                        <button class="btn btn-outline-warning" onclick="openTeacherDashboard()"><i class="fas fa-chalkboard-teacher"></i> 教師監控後台</button>
                     </div>
                 </div>
             </div>
@@ -212,6 +212,7 @@
                                 <button class="btn btn-outline-info" onclick="globalAskAI('analyze')"><i class="fas fa-lightbulb"></i> 解釋程式</button>
                                 <button class="btn btn-outline-warning" onclick="globalAskAI('check_errors')"><i class="fas fa-bug"></i> 檢查錯誤</button>
                                 <button class="btn btn-outline-success" onclick="globalAskAI('improvement_tips')"><i class="fas fa-lightbulb"></i> 改進建議</button>
+                                <button class="btn btn-outline-dark" onclick="globalAskAI('run_code')"><i class="fas fa-play"></i> 運行代碼</button>
                                 <button class="btn btn-outline-danger" onclick="globalTestConflictAnalysis()"><i class="fas fa-code-branch"></i> 衝突分析</button>
                                 <button class="btn btn-outline-primary" onclick="globalShowTutorial()"><i class="fas fa-question-circle"></i> 操作教學</button>
                             </div>
@@ -344,12 +345,10 @@
         function globalClearOutput() { if(Editor) Editor.clearOutput(); else console.error("Editor not ready"); }
         function globalSwitchToAI() { if(UI) UI.switchToAI(); else console.error("UI not ready"); }
         function globalSwitchToChat() { if(UI) UI.switchToChat(); else console.error("UI not ready"); }
-        function globalAskAI(action) { if(AIAssistant) AIAssistant.requestAnalysis(action); else console.error("AIAssistant not ready"); }
-        function globalShareAIResponse() { if(AIAssistant) AIAssistant.shareResponse(); else console.error("AIAssistant not ready"); }
-        function globalHideShareOptions() { if(AIAssistant) AIAssistant.hideShareOptions(); else console.error("AIAssistant not ready"); }
+        // AI相關的全域函數現在在ai-assistant.js中定義
         function globalSendChat() { if(Chat) Chat.sendMessage(); else console.error("Chat not ready"); }
         function globalResolveConflict(action) { if(ConflictResolver) ConflictResolver.resolveConflict(action); else console.error("ConflictResolver not ready"); }
-        function globalAskAIForConflictHelp() { if(ConflictResolver) ConflictResolver.requestAIAnalysis(); else console.error("ConflictResolver not ready"); }
+        // globalAskAIForConflictHelp 函數已移到 conflict.js 中
         function globalTestConflictAnalysis() { 
             console.log('🧪 執行衝突分析測試');
             

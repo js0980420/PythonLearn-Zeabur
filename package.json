@@ -11,6 +11,7 @@
     "build": "echo 'Build completed successfully'",
     "postinstall": "echo 'Dependencies installed successfully'",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test-mcp": "node mcp-test.js",
     "clean": "node -e \"console.log('🧹 清理備份文件...'); const fs = require('fs'); const path = require('path'); const files = fs.readdirSync('.'); files.filter(f => f.startsWith('data_backup_')).forEach(f => { fs.unlinkSync(f); console.log('🗑️ 已刪除:', f); }); console.log('✅ 清理完成');\"",
     "backup": "node -e \"const fs = require('fs'); const src = 'data_backup.json'; if(fs.existsSync(src)) { const dest = 'manual_backup_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json'; fs.copyFileSync(src, dest); console.log('💾 手動備份已創建:', dest); } else { console.log('❌ 找不到備份文件'); }\""
   },
@@ -23,17 +24,27 @@
     "teaching",
     "real-time",
     "ai-assistant",
-    "zeabur"
+    "zeabur",
+    "mcp",
+    "model-context-protocol"
   ],
   "author": "Python Collaboration Team",
   "license": "MIT",
   "dependencies": {
     "express": "^4.21.2",
     "mysql2": "^3.14.1",
+    "nodemailer": "^6.9.15",
     "ws": "^8.18.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "archiver": "^7.0.1",
+    "axios": "^1.9.0",
+    "cheerio": "^1.1.0",
+    "fs-extra": "^11.3.0",
+    "multer": "^2.0.1",
+    "nodemon": "^3.0.1",
+    "playwright": "^1.53.0",
+    "simple-git": "^3.28.0"
   },
   "engines": {
     "node": ">=18.0.0",

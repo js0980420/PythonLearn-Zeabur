@@ -414,6 +414,12 @@ class ChatManager {
 // 全局聊天管理器實例
 const Chat = new ChatManager();
 
+// 同時設置為window全域變數，確保在任何地方都能存取
+window.Chat = Chat;
+
+console.log('🔧 聊天管理器已創建');
+console.log('✅ 全域 Chat 實例已創建並設置到 window.Chat:', Chat);
+
 // 全局函數供HTML調用
 function sendChat() {
     Chat.sendMessage();

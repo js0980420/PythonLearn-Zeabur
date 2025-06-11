@@ -2254,6 +2254,8 @@
                 // 處理房間數據
                 if (data.rooms && Array.isArray(data.rooms)) {
                     data.rooms.forEach(room => {
+                        console.log('🏠 處理房間數據:', room);
+                        
                         // 添加房間
                         rooms.set(room.id, {
                             name: room.id,
@@ -2266,7 +2268,8 @@
                         });
                         
                         // 添加房間中的學生
-                        if (room.users && Array.isArray(room.users)) {
+                        if (room.users && Array.isArray(room.users) && room.users.length > 0) {
+                            console.log(`👥 房間 ${room.id} 有 ${room.users.length} 個用戶:`, room.users);
                             room.users.forEach(user => {
                                 const studentId = user.id;
                                 students.set(studentId, {
@@ -2279,6 +2282,23 @@
                                     codeLines: 0
                                 });
                             });
+                        } else {
+                            console.log(`⚠️ 房間 ${room.id} 沒有用戶數據或用戶列表為空`);
+                            // 如果有 userCount 但沒有用戶列表，創建佔位符學生
+                            if (room.userCount > 0) {
+                                for (let i = 0; i < room.userCount; i++) {
+                                    const studentId = `${room.id}_student_${i}`;
+                                    students.set(studentId, {
+                                        id: studentId,
+                                        name: `未知學生 ${i + 1}`,
+                                        roomId: room.id,
+                                        online: true,
+                                        lastActivity: Date.now(),
+                                        code: '',
+                                        codeLines: 0
+                                    });
+                                }
+                            }
                         }
                     });
                 }

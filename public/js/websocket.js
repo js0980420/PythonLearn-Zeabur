@@ -32,7 +32,7 @@ class WebSocketManager {
         
         if (isLocalhost) {
             console.log('🏠 檢測到本地開發環境');
-            wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}`;
+            wsUrl = `ws://${window.location.hostname}:${window.location.port || 3000}`;
         } else {
             // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
@@ -159,6 +159,13 @@ class WebSocketManager {
                 break;
             case 'conflict_notification':
                 this.handleConflictNotification(message);
+                break;
+            case 'notification_sent':
+                console.log('📧 衝突通知已發送確認:', message);
+                // 可以在這裡添加用戶反饋，例如顯示"通知已發送"的提示
+                if (window.UI && typeof window.UI.showInfoToast === 'function') {
+                    window.UI.showInfoToast('衝突通知已發送給對方');
+                }
                 break;
             case 'pong':
                 this.lastHeartbeat = Date.now();
@@ -315,9 +322,9 @@ class WebSocketManager {
         }
     }
 
-    // 處理 AI 回應
+    // 處理AI回應
     handleAIResponse(message) {
-        console.log('🤖 處理AI回應:', message);
+        console.log('🤖 處理AI回應:', message.type);
         console.log('   - 動作:', message.action);
         console.log('   - 請求ID:', message.requestId);
         console.log('   - 錯誤:', message.error);
@@ -327,21 +334,21 @@ class WebSocketManager {
             console.log('🔍 處理AI衝突分析回應...');
             
             // 顯示在AI助教面板中
-            if (window.AIAssistant && typeof window.AIAssistant.showResponse === 'function') {
+            if (typeof AIAssistant !== 'undefined' && AIAssistant && typeof AIAssistant.showResponse === 'function') {
                 const analysisResult = message.response || '❌ AI衝突分析無回應';
                 const formattedResponse = `
                     <h6><i class="fas fa-exclamation-triangle text-warning"></i> AI協作衝突分析</h6>
                     <div class="alert alert-info">
-                        ${window.AIAssistant.formatAIResponse(analysisResult)}
+                        ${AIAssistant.formatAIResponse ? AIAssistant.formatAIResponse(analysisResult) : analysisResult}
                     </div>
                 `;
-                window.AIAssistant.showResponse(formattedResponse);
+                AIAssistant.showResponse(formattedResponse);
                 console.log('✅ AI衝突分析結果已顯示在助教面板');
             }
             
             // 同時也顯示在衝突解決器中
-            if (window.ConflictResolver && typeof window.ConflictResolver.displayAIAnalysis === 'function') {
-                window.ConflictResolver.displayAIAnalysis(message.response);
+            if (typeof ConflictResolver !== 'undefined' && ConflictResolver && typeof ConflictResolver.displayAIAnalysis === 'function') {
+                ConflictResolver.displayAIAnalysis(message.response);
                 console.log('✅ AI衝突分析結果已顯示在衝突解決器');
             }
             
@@ -349,17 +356,51 @@ class WebSocketManager {
         }
         
         // 處理一般AI回應
-        if (window.AIAssistant && typeof window.AIAssistant.handleAIResponse === 'function') {
+        console.log('🔍 檢查AI助教實例可用性...');
+        console.log('   - typeof AIAssistant:', typeof AIAssistant);
+        console.log('   - AIAssistant 存在:', !!AIAssistant);
+        console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
+        console.log('   - handleAIResponse 方法存在:', !!(AIAssistant && typeof AIAssistant.handleAIResponse === 'function'));
+        
+        // 優先檢查window.AIAssistant，然後檢查AIAssistant
+        const aiInstance = window.AIAssistant || AIAssistant;
+        
+        if (aiInstance && typeof aiInstance.handleAIResponse === 'function') {
             console.log('✅ 調用AIAssistant處理一般AI回應');
-            window.AIAssistant.handleAIResponse(message.response || message);
-        } else if (window.aiManager && typeof window.aiManager.handleResponse === 'function') {
+            console.log('🔍 傳遞給AI助教的回應數據:', {
+                type: typeof message.response,
+                length: message.response ? message.response.length : 0,
+                preview: message.response ? message.response.substring(0, 100) + '...' : 'null'
+            });
+            aiInstance.handleAIResponse(message.response || message);
+        } else if (typeof aiManager !== 'undefined' && aiManager && typeof aiManager.handleResponse === 'function') {
             // 保持向後相容性
             console.log('✅ 調用舊版aiManager處理AI回應');
-            window.aiManager.handleResponse(message);
+            aiManager.handleResponse(message);
         } else {
             console.error('❌ AI助教管理器未找到或方法不存在');
-            console.log('   - AIAssistant 存在:', !!window.AIAssistant);
-            console.log('   - aiManager 存在:', !!window.aiManager);
+            console.log('   - typeof AIAssistant:', typeof AIAssistant);
+            console.log('   - AIAssistant 存在:', !!AIAssistant);
+            console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
+            console.log('   - typeof aiManager:', typeof aiManager);
+            console.log('   - aiManager 存在:', !!aiManager);
+            
+            // 緊急降級處理：直接顯示AI回應
+            if (message.response) {
+                console.log('🆘 使用緊急降級方式顯示AI回應');
+                const responseContainer = document.getElementById('aiResponse');
+                if (responseContainer) {
+                    responseContainer.innerHTML = `
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-robot"></i> AI助教回應</h6>
+                            <div style="white-space: pre-wrap;">${message.response}</div>
+                        </div>
+                    `;
+                    console.log('✅ AI回應已通過緊急降級方式顯示');
+                } else {
+                    console.error('❌ 找不到aiResponse容器，無法顯示AI回應');
+                }
+            }
         }
     }
 

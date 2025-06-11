@@ -1,0 +1,59 @@
+# Node.js 依賴
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 環境變數檔案
+.env
+.env.local
+.env.production
+.env.development
+
+# AI 配置檔案（包含敏感資料，不上傳）
+ai_config.json
+
+# 日誌檔案
+*.log
+logs/
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE/編輯器檔案
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 臨時檔案
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# 備份檔案
+*.bak
+*.backup
+
+# 說明文件（不上傳到 GitHub）
+*.md
+!package.json
+!zeabur.yaml
+說明文件/
+
+# 規則檔案（僅本地使用）
+.cursor/
+
+# Docker 相關
+Dockerfile
+.dockerignore
+
+# 協作數據檔案
+collaboration_data.json
+
+# 其他不需要上傳的檔案
+.htaccess 

@@ -162,7 +162,11 @@ class EditorManager {
     // 保存代碼
     saveCode(isAutoSave = false) {
         if (!wsManager.isConnected()) {
-            UI.showErrorToast("無法保存代碼：請先加入房間。");
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast("無法保存代碼：請先加入房間。");
+            } else {
+                console.error("無法保存代碼：請先加入房間。");
+            }
             return;
         }
         
@@ -198,7 +202,11 @@ class EditorManager {
         // 保存後重置編輯狀態
         this.resetEditingState();
 
-        UI.showSuccessToast(`代碼已保存: ${customName}`);
+        if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+            window.UI.showSuccessToast(`代碼已保存: ${customName}`);
+        } else {
+            console.log(`代碼已保存: ${customName}`);
+        }
         this.updateVersionDisplay(); // 保持版本號更新
     }
 
@@ -236,19 +244,31 @@ class EditorManager {
         if (index >= 0 && index < this.codeHistory.length) {
             const historyItem = this.codeHistory[index];
             this.editor.setValue(historyItem.code);
-            UI.showSuccessToast(`已載入 ${historyItem.name} 的代碼版本`);
+            if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+                window.UI.showSuccessToast(`已載入 ${historyItem.name} 的代碼版本`);
+            } else {
+                console.log(`已載入 ${historyItem.name} 的代碼版本`);
+            }
         }
     }
 
     // 載入 - 修改為智能載入最新版本
     loadCode(loadType = 'latest') {
         if (!wsManager.isConnected()) {
-            UI.showErrorToast('未連接到服務器，無法載入');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('未連接到服務器，無法載入');
+            } else {
+                console.error('未連接到服務器，無法載入');
+            }
             return;
         }
         
         if (!wsManager.currentRoom) {
-            UI.showErrorToast('請先加入房間');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('請先加入房間');
+            } else {
+                console.error('請先加入房間');
+            }
             return;
         }
         
@@ -262,7 +282,11 @@ class EditorManager {
             currentVersion: this.codeVersion // 發送當前版本號給服務器比較
         });
         
-        UI.showSuccessToast('正在檢查最新代碼...');
+        if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+            window.UI.showSuccessToast('正在檢查最新代碼...');
+        } else {
+            console.log('正在檢查最新代碼...');
+        }
     }
 
     // 運行代碼
@@ -312,7 +336,11 @@ class EditorManager {
         if (message.forceUpdate) {
             console.log('🔥 強制更新模式，直接應用代碼');
             this.applyRemoteCode(message);
-            UI.showInfoToast(`${message.userName} 強制更新了代碼`);
+            if (window.UI && typeof window.UI.showInfoToast === 'function') {
+                window.UI.showInfoToast(`${message.userName} 強制更新了代碼`);
+            } else {
+                console.log(`${message.userName} 強制更新了代碼`);
+            }
             return;
         }
         
@@ -363,9 +391,17 @@ class EditorManager {
             
             // 🔧 如果對方有衝突預警，顯示協作提醒
             if (message.hasConflictWarning) {
-                UI.showInfoToast(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
+                if (window.UI && typeof window.UI.showInfoToast === 'function') {
+                    window.UI.showInfoToast(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
+                } else {
+                    console.log(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
+                }
             } else {
-                UI.showInfoToast(`📝 ${message.userName} 更新了代碼`);
+                if (window.UI && typeof window.UI.showInfoToast === 'function') {
+                    window.UI.showInfoToast(`📝 ${message.userName} 更新了代碼`);
+                } else {
+                    console.log(`📝 ${message.userName} 更新了代碼`);
+                }
             }
         }
     }
@@ -539,7 +575,11 @@ class EditorManager {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             // 現代瀏覽器支援 Clipboard API
             navigator.clipboard.writeText(code).then(() => {
-                UI.showSuccessToast('代碼已複製到剪貼簿');
+                if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+                    window.UI.showSuccessToast('代碼已複製到剪貼簿');
+                } else {
+                    console.log('代碼已複製到剪貼簿');
+                }
             }).catch(() => {
                 this.fallbackCopy(code);
             });
@@ -562,13 +602,25 @@ class EditorManager {
         try {
             const successful = document.execCommand('copy');
             if (successful) {
-                UI.showSuccessToast('代碼已複製到剪貼簿');
+                if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+                    window.UI.showSuccessToast('代碼已複製到剪貼簿');
+                } else {
+                    console.log('代碼已複製到剪貼簿');
+                }
             } else {
-                UI.showErrorToast('複製失敗，請手動複製');
+                if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                    window.UI.showErrorToast('複製失敗，請手動複製');
+                } else {
+                    console.error('複製失敗，請手動複製');
+                }
             }
         } catch (err) {
             console.error('複製失敗:', err);
-            UI.showErrorToast('複製失敗，請手動複製');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('複製失敗，請手動複製');
+            } else {
+                console.error('複製失敗，請手動複製');
+            }
         }
         
         document.body.removeChild(textArea);
@@ -587,7 +639,11 @@ class EditorManager {
         a.click();
         window.URL.revokeObjectURL(url);
         
-        UI.showSuccessToast(`檔案 "${filename}.py" 已下載`);
+        if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+            window.UI.showSuccessToast(`檔案 "${filename}.py" 已下載`);
+        } else {
+            console.log(`檔案 "${filename}.py" 已下載`);
+        }
     }
 
     // 觸發文件導入
@@ -611,13 +667,21 @@ class EditorManager {
                            file.type === 'text/x-python';
         
         if (!isValidFile) {
-            UI.showErrorToast('只支援 .py 和 .txt 檔案');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('只支援 .py 和 .txt 檔案');
+            } else {
+                console.error('只支援 .py 和 .txt 檔案');
+            }
             return;
         }
         
         // 檢查文件大小 (1MB 限制)
         if (file.size > 1024 * 1024) {
-            UI.showErrorToast('檔案大小不能超過 1MB');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('檔案大小不能超過 1MB');
+            } else {
+                console.error('檔案大小不能超過 1MB');
+            }
             return;
         }
         
@@ -633,12 +697,20 @@ class EditorManager {
         const reader = new FileReader();
         reader.onload = (e) => {
             this.editor.setValue(e.target.result);
-            UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
+            if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+                window.UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
+            } else {
+                console.log(`檔案 "${file.name}" 載入成功`);
+            }
             // 清除文件輸入
             event.target.value = '';
         };
         reader.onerror = () => {
-            UI.showErrorToast('檔案讀取失敗');
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('檔案讀取失敗');
+            } else {
+                console.error('檔案讀取失敗');
+            }
             event.target.value = '';
         };
         reader.readAsText(file);
