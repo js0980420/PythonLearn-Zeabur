@@ -264,7 +264,7 @@ class ChatManager {
     }
 
     // 添加聊天消息
-    addMessage(userName, message, isSystem = false, isTeacher = false) {
+    addMessage(userName, message, isSystem = false, isTeacher = false, roomName = '') {
         if (!this.chatContainer) {
             console.error('❌ 聊天容器未初始化');
             return;
@@ -290,7 +290,15 @@ class ChatManager {
         } else {
             // 為教師消息添加特殊標識
             const userDisplay = isTeacher ? `👨‍🏫 ${userName}` : userName;
-            messageDiv.innerHTML = `<strong>${userDisplay}:</strong> ${this.escapeHtml(message)}`;
+            const roomDisplay = roomName ? `<span class="chat-message-room">[${roomName}]</span> ` : '';
+            messageDiv.innerHTML = `
+                <div class="chat-message-header">
+                    <span class="chat-message-user">${userDisplay}</span>
+                    ${roomDisplay}
+                    <span class="chat-message-time">${new Date().toLocaleTimeString('zh-TW')}</span>
+                </div>
+                <div class="chat-message-content">${this.escapeHtml(message)}</div>
+            `;
         }
         
         this.chatContainer.appendChild(messageDiv);

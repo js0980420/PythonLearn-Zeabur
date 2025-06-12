@@ -784,8 +784,8 @@
         }
 
         .chat-input-container {
-            padding: 15px;
-            background: #3a3a3a;
+            padding: 10px;
+            background: #2a2a2a;
             border-top: 1px solid #4a5568;
         }
 
@@ -795,46 +795,39 @@
 
         .chat-input-group {
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .chat-input {
             flex: 1;
-            padding: 10px 12px;
-            background: #2a2a2a;
+            padding: 8px 12px;
             border: 1px solid #4a5568;
-            border-radius: 6px;
+            border-radius: 4px;
+            background: #3a3a3a;
             color: var(--text-primary);
-            font-size: 14px;
-            transition: all 0.3s;
         }
 
         .chat-input:focus {
             outline: none;
             border-color: var(--active-student);
-            box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.2);
         }
 
         .chat-send-btn {
-            padding: 10px 15px;
+            padding: 8px 16px;
             background: var(--active-student);
             border: none;
-            border-radius: 6px;
-            color: #1a1a1a;
+            border-radius: 4px;
+            color: white;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background 0.2s;
         }
 
         .chat-send-btn:hover {
-            background: #38b2ac;
-            transform: translateY(-1px);
+            background: #2d5016;
         }
 
-        .chat-send-btn:disabled {
-            background: #4a5568;
-            color: var(--text-secondary);
-            cursor: not-allowed;
-            transform: none;
+        .chat-send-btn i {
+            font-size: 14px;
         }
 
         /* 響應式設計 */

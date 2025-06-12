@@ -1097,6 +1097,11 @@ function handleTeacherBroadcast(ws, message) {
 function handleTeacherChat(ws, message) {
     if (!teacherMonitors.has(ws.userId)) {
         console.log(`❌ 非教師用戶嘗試發送教師聊天: ${ws.userId}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '權限不足',
+            message: '只有教師可以發送教師消息'
+        }));
         return;
     }
     
@@ -1111,19 +1116,29 @@ function handleTeacherChat(ws, message) {
         userName: teacherName || '教師',
         message: chatMessage,
         timestamp: Date.now(),
-        isTeacher: true
+        isTeacher: true,
+        roomName: targetRoom === 'all' ? '所有房間' : targetRoom
     };
     
     if (targetRoom === 'all') {
         // 廣播到所有房間
-        Object.values(rooms).forEach(room => {
+        Object.keys(rooms).forEach(roomId => {
+            const room = rooms[roomId];
+            if (!room.chatHistory) {
+                room.chatHistory = [];
+            }
+            
             // 添加到房間聊天歷史
-            room.chatHistory.push(teacherChatMessage);
+            room.chatHistory.push({
+                ...teacherChatMessage,
+                roomName: roomId
+            });
             
             // 廣播給房間內的所有用戶
-            broadcastToRoom(room.id, {
+            broadcastToRoom(roomId, {
                 type: 'chat_message',
-                ...teacherChatMessage
+                ...teacherChatMessage,
+                roomName: roomId
             });
         });
         
@@ -1134,17 +1149,20 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: '所有房間'
+                        ...teacherChatMessage
                     }));
                 }
             }
         });
         
         console.log(`📢 教師消息已廣播到所有房間`);
-    } else if (targetRoom && rooms[targetRoom]) {
+    } else if (rooms[targetRoom]) {
         // 發送到特定房間
         const room = rooms[targetRoom];
+        if (!room.chatHistory) {
+            room.chatHistory = [];
+        }
+        
         room.chatHistory.push(teacherChatMessage);
         
         broadcastToRoom(targetRoom, {
@@ -1159,8 +1177,7 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: targetRoom
+                        ...teacherChatMessage
                     }));
                 }
             }
@@ -1169,6 +1186,11 @@ function handleTeacherChat(ws, message) {
         console.log(`💬 教師消息已發送到房間 ${targetRoom}`);
     } else {
         console.log(`❌ 目標房間不存在: ${targetRoom}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '房間不存在',
+            message: `房間 "${targetRoom}" 不存在`
+        }));
     }
 }
 
