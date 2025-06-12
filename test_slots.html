@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>槽位功能測試</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h2><i class="fas fa-bookmark"></i> 槽位功能測試</h2>
+                <p class="text-muted">測試4個槽位的保存和載入功能</p>
+                
+                <!-- 模擬編輯器 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-code"></i> 模擬編輯器</h5>
+                    </div>
+                    <div class="card-body">
+                        <textarea id="mockEditor" class="form-control" rows="10" placeholder="在這裡輸入代碼...">print("Hello World")</textarea>
+                    </div>
+                </div>
+                
+                <!-- 保存按鈕組 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-save"></i> 保存功能</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group me-2" role="group">
+                            <button class="btn btn-outline-primary" onclick="testSaveCode()">
+                                <i class="fas fa-save"></i> 保存
+                            </button>
+                            <button class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><h6 class="dropdown-header">保存到槽位</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="testSaveToSlot(1)">
+                                    <i class="fas fa-bookmark text-primary"></i> <span id="slot1Name">槽位 1 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testSaveToSlot(2)">
+                                    <i class="fas fa-bookmark text-success"></i> <span id="slot2Name">槽位 2 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testSaveToSlot(3)">
+                                    <i class="fas fa-bookmark text-warning"></i> <span id="slot3Name">槽位 3 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testSaveToSlot(4)">
+                                    <i class="fas fa-bookmark text-danger"></i> <span id="slot4Name">槽位 4 (空)</span>
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 載入按鈕組 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-download"></i> 載入功能</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group me-2" role="group">
+                            <button class="btn btn-outline-secondary" onclick="testLoadCode()">
+                                <i class="fas fa-sync-alt"></i> 載入
+                            </button>
+                            <button class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown">
+                                <span class="visually-hidden">Toggle Dropdown</span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><h6 class="dropdown-header">載入選項</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="testLoadCode()">
+                                    <i class="fas fa-sync-alt text-success"></i> 載入最新
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">槽位記錄</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="testLoadFromSlot(1)">
+                                    <i class="fas fa-bookmark text-primary"></i> <span id="loadSlot1Name">槽位 1 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testLoadFromSlot(2)">
+                                    <i class="fas fa-bookmark text-success"></i> <span id="loadSlot2Name">槽位 2 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testLoadFromSlot(3)">
+                                    <i class="fas fa-bookmark text-warning"></i> <span id="loadSlot3Name">槽位 3 (空)</span>
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="testLoadFromSlot(4)">
+                                    <i class="fas fa-bookmark text-danger"></i> <span id="loadSlot4Name">槽位 4 (空)</span>
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 日誌區域 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-list"></i> 操作日誌</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">清除日誌</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="testLog" style="height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 模擬Editor對象
+        window.Editor = {
+            getCode: function() {
+                return document.getElementById('mockEditor').value;
+            },
+            setCode: function(code) {
+                document.getElementById('mockEditor').value = code;
+            }
+        };
+
+        // 模擬UI對象  
+        window.UI = {
+            showMessage: function(message, type) {
+                log(`UI消息 [${type}]: ${message}`);
+                if (type === 'error') {
+                    alert(`錯誤: ${message}`);
+                }
+            }
+        };
+
+        // 簡單的模擬SaveLoadManager
+        class MockSaveLoadManager {
+            constructor() {
+                this.userSlots = {};
+                this.isInitialized = true;
+                this.loadSlotsFromStorage();
+            }
+
+            loadSlotsFromStorage() {
+                try {
+                    const stored = localStorage.getItem('userCodeSlots');
+                    if (stored) {
+                        this.userSlots = JSON.parse(stored);
+                        this.updateSlotDisplayNames();
+                    }
+                } catch (error) {
+                    console.error('載入槽位數據失敗:', error);
+                }
+            }
+
+            saveSlotsToStorage() {
+                try {
+                    localStorage.setItem('userCodeSlots', JSON.stringify(this.userSlots));
+                } catch (error) {
+                    console.error('保存槽位數據失敗:', error);
+                }
+            }
+
+            updateSlotDisplayNames() {
+                for (let i = 1; i <= 4; i++) {
+                    const slot = this.userSlots[i];
+                    const saveSlotNameEl = document.getElementById(`slot${i}Name`);
+                    const loadSlotNameEl = document.getElementById(`loadSlot${i}Name`);
+                    
+                    if (slot) {
+                        const displayName = `${slot.name} (${new Date(slot.timestamp).toLocaleDateString()})`;
+                        if (saveSlotNameEl) saveSlotNameEl.textContent = displayName;
+                        if (loadSlotNameEl) loadSlotNameEl.textContent = displayName;
+                    } else {
+                        const defaultName = `槽位 ${i} (空)`;
+                        if (saveSlotNameEl) saveSlotNameEl.textContent = defaultName;
+                        if (loadSlotNameEl) loadSlotNameEl.textContent = defaultName;
+                    }
+                }
+            }
+
+            saveToSlot(slotNumber) {
+                const code = Editor.getCode();
+                if (!code.trim()) {
+                    alert('代碼內容為空');
+                    return;
+                }
+
+                const name = prompt(`為槽位 ${slotNumber} 命名:`, `程式碼 - ${new Date().toLocaleDateString()}`);
+                if (!name) return;
+
+                this.userSlots[slotNumber] = {
+                    name: name,
+                    code: code,
+                    timestamp: Date.now()
+                };
+
+                this.saveSlotsToStorage();
+                this.updateSlotDisplayNames();
+                log(`✅ 已保存到槽位 ${slotNumber}: ${name}`);
+            }
+
+            loadFromSlot(slotNumber) {
+                const slot = this.userSlots[slotNumber];
+                if (!slot) {
+                    alert(`槽位 ${slotNumber} 是空的`);
+                    return;
+                }
+
+                if (confirm(`確定載入槽位 ${slotNumber}: ${slot.name}？`)) {
+                    Editor.setCode(slot.code);
+                    log(`✅ 已從槽位 ${slotNumber} 載入: ${slot.name}`);
+                }
+            }
+
+            checkInitialized() {
+                return this.isInitialized;
+            }
+
+            showMessage(message, type) {
+                UI.showMessage(message, type);
+            }
+        }
+
+        // 創建模擬實例
+        window.SaveLoadManager = new MockSaveLoadManager();
+
+        // 測試函數
+        function testSaveCode() {
+            log('🔄 模擬普通保存功能');
+        }
+
+        function testSaveToSlot(slotNumber) {
+            log(`🔄 保存到槽位 ${slotNumber}`);
+            SaveLoadManager.saveToSlot(slotNumber);
+        }
+
+        function testLoadCode() {
+            log('🔄 模擬普通載入功能');
+        }
+
+        function testLoadFromSlot(slotNumber) {
+            log(`🔄 從槽位 ${slotNumber} 載入`);
+            SaveLoadManager.loadFromSlot(slotNumber);
+        }
+
+        function log(message) {
+            const logEl = document.getElementById('testLog');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${time}] ${message}<br>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('testLog').innerHTML = '';
+        }
+
+        // 初始化
+        window.addEventListener('load', function() {
+            log('🚀 槽位功能測試頁面已載入');
+            SaveLoadManager.updateSlotDisplayNames();
+        });
+    </script>
+</body>
+</html> 

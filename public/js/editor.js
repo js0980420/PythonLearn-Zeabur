@@ -18,7 +18,15 @@ class EditorManager {
 
     // 初始化 CodeMirror 編輯器
     initialize() {
-        this.editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+        const textArea = document.getElementById('codeEditor');
+        if (!textArea) {
+            console.error('❌ 找不到編輯器 textarea 元素 #codeEditor');
+            return;
+        }
+
+        console.log('🔧 正在初始化 CodeMirror 編輯器...');
+        
+        this.editor = CodeMirror.fromTextArea(textArea, {
             mode: 'python',
             theme: 'default',
             lineNumbers: true,
@@ -26,6 +34,7 @@ class EditorManager {
             autoCloseBrackets: true,
             matchBrackets: true,
             lineWrapping: true,
+            autofocus: true, // 添加自動聚焦
             extraKeys: {
                 "Ctrl-S": (cm) => {
                     this.saveCode();
@@ -43,6 +52,12 @@ class EditorManager {
             }
         });
 
+        // 確保編輯器已創建
+        if (!this.editor) {
+            console.error('❌ CodeMirror 編輯器初始化失敗');
+            return;
+        }
+
         // 動態設置編輯器樣式
         this.setupEditorStyles();
 
@@ -54,6 +69,15 @@ class EditorManager {
         
         // 載入歷史記錄
         this.loadHistoryFromStorage();
+
+        // 💡 確保編輯器可以輸入 - 延遲聚焦
+        setTimeout(() => {
+            if (this.editor) {
+                this.editor.refresh();
+                this.editor.focus();
+                console.log('✅ 編輯器已聚焦，可以開始輸入');
+            }
+        }, 100);
 
         console.log('✅ 編輯器初始化完成');
     }
@@ -111,8 +135,13 @@ class EditorManager {
                 padding-left: 70px !important; /* 為行號留出空間 */
                 margin-left: 0 !important;
                 background: transparent !important; /* 透明背景 */
+                cursor: text !important; /* 確保顯示文本輸入游標 */
             `;
         }
+
+        // 確保編輯器不是只讀模式
+        this.editor.setOption('readOnly', false);
+        console.log('🔧 編輯器設置為可編輯模式');
         
         // 監聽編輯器內容變化，動態調整新行的樣式 (主要針對行號文字)
         this.editor.on('update', () => {
@@ -393,7 +422,7 @@ class EditorManager {
             if (message.hasConflictWarning) {
                 if (window.UI && typeof window.UI.showInfoToast === 'function') {
                     window.UI.showInfoToast(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
-                } else {
+            } else {
                     console.log(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
                 }
             } else {
@@ -604,7 +633,7 @@ class EditorManager {
             if (successful) {
                 if (window.UI && typeof window.UI.showSuccessToast === 'function') {
                     window.UI.showSuccessToast('代碼已複製到剪貼簿');
-                } else {
+            } else {
                     console.log('代碼已複製到剪貼簿');
                 }
             } else {

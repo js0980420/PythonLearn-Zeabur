@@ -51,6 +51,17 @@ class UIManager {
         if (currentUserNameEl) {
             currentUserNameEl.textContent = userName;
         }
+        
+        // 🎯 新用戶加入房間後自動顯示操作教學
+        setTimeout(() => {
+            try {
+                console.log('🎯 準備顯示操作教學...');
+                this.showTutorial();
+                console.log('✅ 操作教學顯示完成');
+            } catch (error) {
+                console.error('❌ 顯示操作教學時發生錯誤:', error);
+            }
+        }, 2000); // 延遲2秒確保所有模組都已載入
     }
 
     // 離開房間

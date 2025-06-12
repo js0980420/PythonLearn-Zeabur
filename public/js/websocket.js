@@ -160,6 +160,9 @@ class WebSocketManager {
             case 'conflict_notification':
                 this.handleConflictNotification(message);
                 break;
+            case 'teacher_broadcast':
+                this.handleTeacherBroadcast(message);
+                break;
             case 'notification_sent':
                 console.log('📧 衝突通知已發送確認:', message);
                 // 可以在這裡添加用戶反饋，例如顯示"通知已發送"的提示
@@ -174,6 +177,20 @@ class WebSocketManager {
                 console.error('❌ 收到服務器錯誤消息:', message.error, message.details);
                 if (window.UI) {
                     window.UI.showToast('服務器錯誤', message.error || '發生未知錯誤', 'error');
+                }
+                break;
+            case 'save_code_success':
+            case 'save_code_error':
+            case 'load_code_success':
+            case 'load_code_error':
+            case 'history_data':
+            case 'user_saved_code':
+            case 'code_loaded_notification':
+                // 委託給 SaveLoadManager 處理
+                if (window.SaveLoadManager && typeof window.SaveLoadManager.handleMessage === 'function') {
+                    window.SaveLoadManager.handleMessage(message);
+                } else {
+                    console.warn('⚠️ SaveLoadManager 未就緒，無法處理消息:', message.type);
                 }
                 break;
             default:
@@ -200,6 +217,17 @@ class WebSocketManager {
             console.log('   - 代碼內容:', message.code);
         }
         
+        // 初始化 SaveLoadManager
+        if (window.SaveLoadManager && typeof window.SaveLoadManager.init === 'function') {
+            const currentUser = {
+                name: this.currentUser || message.userName || '未知用戶'
+            };
+            window.SaveLoadManager.init(currentUser, message.roomId);
+            console.log('💾 SaveLoadManager 已初始化');
+        } else {
+            console.error('❌ SaveLoadManager 未找到或初始化方法不存在');
+        }
+        
         // 更新用戶列表
         this.updateUserList(message.users);
         
@@ -210,7 +238,7 @@ class WebSocketManager {
             // 備用方案：使用 Chat 對象
             if (message.chatHistory && message.chatHistory.length > 0) {
                 message.chatHistory.forEach(msg => {
-                    window.Chat.addChatMessage(msg.content, msg.author, msg.timestamp);
+                    window.Chat.addMessage(msg.userName, msg.message, false, msg.isTeacher);
                 });
             }
         }
@@ -310,15 +338,17 @@ class WebSocketManager {
 
     // 處理游標變更
     handleCursorChange(message) {
-        if (window.editorManager) {
-            window.editorManager.handleRemoteCursorChange(message);
+        if (window.Editor && typeof window.Editor.handleRemoteCursorChange === 'function') {
+            window.Editor.handleRemoteCursorChange(message);
+        } else {
+            console.log('💡 編輯器不支援光標位置同步（正常）');
         }
     }
 
     // 處理聊天消息
     handleChatMessage(message) {
-        if (window.chatManager) {
-            window.chatManager.displayMessage(message);
+        if (window.Chat) {
+            window.Chat.addMessage(message.userName, message.message, false, message.isTeacher);
         }
     }
 
@@ -457,6 +487,78 @@ class WebSocketManager {
         }
     }
 
+    // 處理教師廣播消息
+    handleTeacherBroadcast(message) {
+        console.log('📢 收到教師廣播:', message);
+        
+        const broadcastMessage = message.message || message.data?.message || '教師廣播消息';
+        const messageType = message.messageType || message.data?.messageType || 'info';
+        
+        // 顯示廣播消息
+        if (window.UI && typeof window.UI.showToast === 'function') {
+            // 根據消息類型選擇不同的圖標和顏色
+            let toastType = 'info';
+            let title = '📢 教師通知';
+            
+            switch (messageType) {
+                case 'warning':
+                    toastType = 'warning';
+                    title = '⚠️ 教師警告';
+                    break;
+                case 'error':
+                    toastType = 'error';
+                    title = '❌ 教師提醒';
+                    break;
+                case 'success':
+                    toastType = 'success';
+                    title = '✅ 教師表揚';
+                    break;
+                default:
+                    toastType = 'info';
+                    title = '📢 教師通知';
+                    break;
+            }
+            
+            window.UI.showToast(title, broadcastMessage, toastType, 8000); // 8秒顯示
+        } else {
+            // 降級處理：使用原生alert
+            alert(`📢 教師廣播：\n${broadcastMessage}`);
+        }
+        
+        // 在聊天區域顯示廣播消息
+        if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
+            window.Chat.addSystemMessage(`📢 教師廣播：${broadcastMessage}`, 'teacher-broadcast');
+        } else if (window.chatManager && typeof window.chatManager.addSystemMessage === 'function') {
+            window.chatManager.addSystemMessage(`📢 教師廣播：${broadcastMessage}`, 'teacher-broadcast');
+        }
+        
+        // 播放提示音（如果可用）
+        try {
+            if (window.AudioContext || window.webkitAudioContext) {
+                // 生成簡單的提示音
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            }
+        } catch (error) {
+            console.log('🔇 無法播放提示音:', error.message);
+        }
+        
+        console.log('✅ 教師廣播消息已處理');
+    }
+
     // 更新用戶列表
     updateUserList(users) {
         console.log(`👥 準備更新用戶列表: ${users ? users.length : 0} 個用戶`);
@@ -559,3 +661,6 @@ class WebSocketManager {
 
 // 全局 WebSocket 管理器實例
 const wsManager = new WebSocketManager(); 
+
+// 暴露到全域 window 對象
+window.wsManager = wsManager; 
