@@ -348,7 +348,8 @@ class WebSocketManager {
     // 處理聊天消息
     handleChatMessage(message) {
         if (window.Chat) {
-            window.Chat.addMessage(message.userName, message.message, false, message.isTeacher);
+            const { userName, roomName, message: chatText, isTeacher } = message;
+            window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
         }
     }
 
