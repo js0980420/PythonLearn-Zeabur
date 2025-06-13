@@ -18,14 +18,20 @@ const wss = new WebSocket.Server({ server });
 // 初始化 MySQL 連接池
 let pool;
 try {
-    pool = mysql.createPool({
-        ...config.mysql,
-        waitForConnections: true,
-        queueLimit: 0
-    });
+    pool = mysql.createPool(config.mysql);
     console.log('✅ MySQL 連接池建立成功！');
+    
+    // 測試連接
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('❌ MySQL 連接測試失敗:', err);
+            return;
+        }
+        console.log('✅ MySQL 連接測試成功！');
+        connection.release();
+    });
 } catch (error) {
-    console.error('❌ MySQL 連接失敗:', error);
+    console.error('❌ MySQL 連接池建立失敗:', error);
     pool = null;
 }
 

@@ -11,12 +11,15 @@ module.exports = {
 
     // MySQL 配置
     mysql: {
-        host: process.env.MYSQL_HOST || 'localhost',
+        host: process.env.MYSQL_HOST || 'service-6849c758e67e4ed917d8b36',
         port: parseInt(process.env.MYSQL_PORT) || 3306,
         user: process.env.MYSQL_USER || 'root',
-        password: process.env.MYSQL_PASSWORD || '',
+        password: process.env.MYSQL_PASSWORD,
         database: process.env.MYSQL_DATABASE || 'pythonlearn',
-        connectionLimit: parseInt(process.env.MYSQL_CONNECTION_LIMIT) || 10
+        connectionLimit: parseInt(process.env.MYSQL_CONNECTION_LIMIT) || 10,
+        charset: 'utf8mb4',
+        waitForConnections: true,
+        queueLimit: 0
     },
 
     // OpenAI 配置
