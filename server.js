@@ -9,11 +9,18 @@ const mysql = require('mysql2/promise'); // 引入 mysql2/promise 用於異步�
 
 const aiAssistant = require('./services/ai_assistant');
 
+// 環境變數配置
+const PORT = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
+
 // 基本配置
 const app = express();
 const server = http.createServer(app);
+
+// WebSocket 服務器配置
 const wss = new WebSocket.Server({ 
     server,
+    path: '/',  // 明確指定 WebSocket 路徑
     maxPayload: 1024 * 1024 * 2, // 2MB 消息大小限制，足夠處理長AI回應
     perMessageDeflate: {
         zlibDeflateOptions: {
@@ -29,18 +36,29 @@ const wss = new WebSocket.Server({
         serverNoContextTakeover: false,
         clientNoContextTakeover: false,
         compress: true
+    },
+    verifyClient: (info) => {
+        // 允許所有來源的 WebSocket 連接
+        return true;
     }
 });
 
-// 環境變數配置
 // 動態檢測 URL，適用於多種部署環境
 const PUBLIC_URL = process.env.PUBLIC_URL || 
                    process.env.VERCEL_URL || 
                    process.env.ZEABUR_URL ||
-                   'http://localhost:8080'; // 默認本地開發
+                   `http://localhost:${PORT}`; // 默認本地開發
 
 const WEBSOCKET_URL = PUBLIC_URL ? PUBLIC_URL.replace('https://', 'wss://').replace('http://', 'ws://') : '';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
+// 配置 Express 中間件
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', CORS_ORIGIN);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
 
 // 數據庫配置（全部使用環境變數）
 const dbConfig = {
@@ -1810,14 +1828,6 @@ setInterval(() => {
 loadDataFromFile();
 
 // 啟動服務器
-// Zeabur 和其他雲平台的端口處理
-let PORT = process.env.PORT || process.env.WEB_PORT || 3000;
-
-// 如果 PORT 是字符串形式的環境變數引用，嘗試解析
-if (typeof PORT === 'string' && PORT.includes('WEB_PORT')) {
-    PORT = process.env.WEB_PORT || 3000;
-}
-
 // 確保 PORT 是數字
 PORT = parseInt(PORT) || 3000;
 
