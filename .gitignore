@@ -56,4 +56,17 @@ Dockerfile
 collaboration_data.json
 
 # 其他不需要上傳的檔案
-.htaccess 
+.htaccess
+
+# 運行時數據
+data/
+
+# 測試
+coverage/
+.nyc_output/
+
+# 配置文件
+config/
+
+# 環境變數
+.env.*.local 

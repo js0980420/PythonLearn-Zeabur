@@ -7,6 +7,8 @@ const fs = require('fs');
 const os = require('os');
 const mysql = require('mysql2/promise'); // 引入 mysql2/promise 用於異步操作
 
+const aiAssistant = require('./services/ai_assistant');
+
 // 基本配置
 const app = express();
 const server = http.createServer(app);
@@ -974,12 +976,13 @@ async function handleChatMessage(ws, message) {
 
     const room = rooms[roomId];
     const chatMessage = {
-        id: Date.now() + Math.random(), // 使用時間戳和隨機數生成唯一ID
+        id: Date.now() + Math.random(),
         userId: ws.userId,
         userName: ws.userName,
         message: message.message,
         timestamp: Date.now(),
-        isHistory: false
+        isHistory: false,
+        roomId: roomId  // 添加房間ID
     };
 
     // 添加到房間聊天歷史
@@ -987,7 +990,6 @@ async function handleChatMessage(ws, message) {
     room.chatHistory.push(chatMessage);
     
     if (isDatabaseAvailable) {
-        // 數據庫模式：保存到數據庫
         try {
             await pool.execute(
                 'INSERT INTO chat_messages (room_id, user_id, message_content) VALUES (?, ?, ?)',
@@ -998,16 +1000,35 @@ async function handleChatMessage(ws, message) {
             console.error(`❌ 保存聊天消息到數據庫失敗:`, error.message);
         }
     } else {
-        // 本地模式：保存到文件
         saveDataToFile();
     }
     
     console.log(`💬 ${ws.userName}: ${message.message}`);
     
-    // 廣播聊天消息
+    // 廣播到房間內所有用戶
     broadcastToRoom(roomId, {
         type: 'chat_message',
         ...chatMessage
+    });
+
+    // 廣播到所有教師監控
+    console.log(`👨‍🏫 正在廣播消息給教師，當前教師數量: ${teacherMonitors.size}`);
+    teacherMonitors.forEach(teacherId => {
+        const teacher = users[teacherId];
+        if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
+            try {
+                teacher.ws.send(JSON.stringify({
+                    type: 'chat_message',
+                    ...chatMessage,
+                    fromRoom: roomId  // 添加來源房間資訊
+                }));
+                console.log(`✅ 消息已發送給教師 ${teacherId}`);
+            } catch (error) {
+                console.error(`❌ 發送消息給教師 ${teacherId} 失敗:`, error);
+            }
+        } else {
+            console.log(`⚠️ 教師 ${teacherId} 的WebSocket連接不可用`);
+        }
     });
 }
 
@@ -1021,8 +1042,18 @@ function handleTeacherMonitor(ws, message) {
     if (action === 'register') {
         // 註冊為教師監控
         teacherMonitors.add(ws.userId);
-        if (users[ws.userId]) {
+        
+        // 確保用戶存在並更新狀態
+        if (!users[ws.userId]) {
+            users[ws.userId] = {
+                ws: ws,
+                userName: message.data?.teacherName || '教師',
+                isTeacher: true,
+                rooms: new Set()
+            };
+        } else {
             users[ws.userId].isTeacher = true;
+            users[ws.userId].ws = ws; // 更新 WebSocket 連接
         }
         
         console.log(`👨‍🏫 教師監控已註冊: ${ws.userId}`);
@@ -1039,6 +1070,17 @@ function handleTeacherMonitor(ws, message) {
         // 發送當前統計信息
         broadcastStatsToTeachers();
         
+        // 發送所有房間的聊天歷史
+        Object.entries(rooms).forEach(([roomId, room]) => {
+            if (room.chatHistory && room.chatHistory.length > 0) {
+                ws.send(JSON.stringify({
+                    type: 'chat_history',
+                    roomId: roomId,
+                    messages: room.chatHistory
+                }));
+            }
+        });
+        
     } else if (action === 'unregister') {
         // 取消註冊教師監控
         teacherMonitors.delete(ws.userId);
@@ -1050,8 +1092,18 @@ function handleTeacherMonitor(ws, message) {
     } else {
         // 默認行為：如果沒有指定action，直接註冊為教師
         teacherMonitors.add(ws.userId);
-        if (users[ws.userId]) {
+        
+        // 確保用戶存在並更新狀態
+        if (!users[ws.userId]) {
+            users[ws.userId] = {
+                ws: ws,
+                userName: message.data?.teacherName || '教師',
+                isTeacher: true,
+                rooms: new Set()
+            };
+        } else {
             users[ws.userId].isTeacher = true;
+            users[ws.userId].ws = ws; // 更新 WebSocket 連接
         }
         
         console.log(`👨‍🏫 教師監控已自動註冊: ${ws.userId} (默認行為)`);
@@ -1066,6 +1118,17 @@ function handleTeacherMonitor(ws, message) {
         
         // 發送當前統計信息
         broadcastStatsToTeachers();
+        
+        // 發送所有房間的聊天歷史
+        Object.entries(rooms).forEach(([roomId, room]) => {
+            if (room.chatHistory && room.chatHistory.length > 0) {
+                ws.send(JSON.stringify({
+                    type: 'chat_history',
+                    roomId: roomId,
+                    messages: room.chatHistory
+                }));
+            }
+        });
     }
 }
 
@@ -1565,845 +1628,44 @@ function analyzeCodeForOutput(code) {
 
 // AI 請求處理函數
 async function handleAIRequest(ws, message) {
-    // 使用正確的用戶獲取方式
-    const user = users[ws.userId];
-    if (!user) {
-        console.log(`❌ AI 請求失敗：找不到用戶 ${ws.userId}`);
-        ws.send(JSON.stringify({
-            type: 'ai_response',
-            action: message.action,
-            requestId: message.requestId,
-            response: '⚠️ 用戶信息不完整，請重新連接',
-            error: 'user_invalid'
-        }));
-        return;
-    }
-    
-    // 修復：從 message.data.code 中提取代碼，而不是 message.code
-    const { action, requestId, data } = message;
-    
-    // 修復：根據動作類型提取代碼
-    let code;
-    if (action === 'conflict_analysis' && data) {
-        // 對於衝突分析，使用 userCode
-        code = data.userCode;
-        console.log(`🔍 [Conflict Analysis] 從 data.userCode 提取代碼: "${code ? code.substring(0, 50) + (code.length > 50 ? '...' : '') : 'null/undefined'}"`);
-    } else {
-        // 對於其他動作，使用 data.code
-        code = data ? data.code : null;
-        console.log(`🔍 [Standard Action] 從 data.code 提取代碼: "${code ? code.substring(0, 50) + (code.length > 50 ? '...' : '') : 'null/undefined'}"`);
-    }
-    
-    console.log(`🤖 收到 AI 請求 - 用戶: ${user.name}, 動作: ${action}, 代碼長度: ${code ? code.length : 0}, RequestID: ${requestId || 'N/A'}`);
-    console.log(`🔍 [Server Debug] 消息結構:`, { action, requestId, data });
-    console.log(`🔍 [Server Debug] 提取的代碼:`, code ? `"${code.substring(0, 50)}${code.length > 50 ? '...' : ''}"` : 'null/undefined');
-    
-    if (!aiConfig.enabled || !aiConfig.openai_api_key) {
-        ws.send(JSON.stringify({
-            type: 'ai_response',
-            action: action,
-            requestId: requestId,
-            response: '🚫 AI 助教功能未啟用或 API 密鑰未設定。請聯繫管理員配置 OpenAI API 密鑰。',
-            error: 'ai_disabled'
-        }));
-        console.log(`⚠️ AI功能停用 - 用戶: ${user.name}, 原因: ${!aiConfig.enabled ? 'AI功能未啟用' : 'API密鑰未設定'}`);
-        return;
-    }
-    
-    // 檢查代碼內容 (但 conflict_analysis 除外，因為它使用 data.userCode)
-    if (action !== 'conflict_analysis' && (!code || code.trim() === '')) {
-        ws.send(JSON.stringify({
-            type: 'ai_response',
-            action: action,
-            requestId: requestId,
-            response: '📝 請先在編輯器中輸入一些 Python 程式碼，然後再使用 AI 助教功能進行分析。',
-            error: 'empty_code'
-        }));
-        console.log(`⚠️ 代碼為空 - 用戶: ${user.name}, 動作: ${action}`);
-        return;
-    }
-    
-    let response = '';
-    let error = null;
-    
     try {
-        // 根據動作類型調用對應的 AI 函數
+        const { action, code } = message;
+        let response;
+
         switch (action) {
-            case 'explain_code':
-            case 'analyze':        // 前端別名映射 - 解釋程式
-                response = await analyzeCode(code);
+            case 'explain':
+                response = await aiAssistant.explainCode(code);
                 break;
-            case 'check_errors':
-            case 'check':          // 前端別名映射 - 檢查錯誤
-                response = await debugCode(code);
+            case 'check':
+                response = await aiAssistant.checkErrors(code);
                 break;
-            case 'improve_code':
-            case 'suggest':        // 前端別名映射 - 改進建議
-            case 'improvement_tips': // 前端別名映射
-                response = await improveCode(code);
+            case 'suggest':
+                response = await aiAssistant.suggestImprovements(code);
                 break;
-            case 'run_code':       // 新增：AI運行代碼分析
-                response = await runCodeWithAI(code);
+            case 'resolve':
+                const { originalCode, currentCode, incomingCode } = message;
+                response = await aiAssistant.analyzeConflict(originalCode, currentCode, incomingCode);
                 break;
-            case 'conflict_resolution':
-            case 'conflict_analysis':  // 新增：支持 conflict_analysis 動作
-            case 'resolve':        // 前端別名映射 - 衝突協助
-                if (action === 'conflict_analysis') {
-                    // 衝突分析：檢查並使用完整的衝突數據
-                    if (!data) {
-                        console.log(`⚠️ conflict_analysis 缺少數據 - 用戶: ${user.name}`);
-                        response = '❌ 衝突分析請求缺少必要數據';
-                        error = 'missing_conflict_data';
-                        break;
-                    }
-                    
-                    console.log(`🔍 [Conflict Analysis] 收到的數據:`, {
-                        userCode: data.userCode ? `"${data.userCode.substring(0, 30)}..."` : 'null/undefined',
-                        serverCode: data.serverCode ? `"${data.serverCode.substring(0, 30)}..."` : 'null/undefined',
-                        userVersion: data.userVersion,
-                        serverVersion: data.serverVersion,
-                        conflictUser: data.conflictUser,
-                        roomId: data.roomId
-                    });
-                    
-                    // 即使 userCode 為空也進行分析，提供協作建議
-                    response = await analyzeConflict({
-                        userCode: data.userCode || '',
-                        serverCode: data.serverCode || '',
-                        userVersion: data.userVersion || 0,
-                        serverVersion: data.serverVersion || 0,
-                        conflictUser: data.conflictUser || user.name,
-                        roomId: data.roomId || user.roomId
-                    });
-                } else {
-                    // 其他衝突解決：使用當前代碼
-                    response = await analyzeConflict({ 
-                        userCode: code, 
-                        serverCode: '', 
-                        userVersion: 0, 
-                        serverVersion: 0, 
-                        conflictUser: user.name, 
-                        roomId: user.roomId 
-                    });
-                }
-                break;
-            case 'collaboration_guide':
-                response = await guideCollaboration(code, { userName: user.name, roomId: user.roomId });
+            case 'run_code':
+                const output = await executePythonCode(code);
+                response = await aiAssistant.analyzeCodeExecution(code, output.result, output.error);
                 break;
             default:
-                response = `❓ 未知的 AI 請求類型: ${action}。支援的功能：解釋程式(explain_code/analyze)、檢查錯誤(check_errors/check)、改進建議(improve_code/suggest)、運行分析(run_code)、衝突協助(conflict_resolution/resolve)、協作指導(collaboration_guide)`;
-                error = 'unknown_action';
+                throw new Error('未知的 AI 助教操作');
         }
-        
-        console.log(`✅ AI 回應生成成功 - 用戶: ${user.name}, 動作: ${action}, 回應長度: ${response.length}`);
-        
-        // 簡化：跳過數據庫記錄，專注於功能測試
-        console.log(`🔄 簡化模式：跳過 AI 請求記錄保存，專注於衝突檢測測試`);
-        
-    } catch (err) {
-        console.error(`❌ AI 請求處理失敗 - 用戶: ${user.name}, 動作: ${action}, 錯誤: ${err.message}`);
-        response = '😅 抱歉，AI 助教暫時無法處理您的請求。請檢查網路連接或稍後再試。如果問題持續，請聯繫管理員。';
-        error = 'ai_processing_failed';
-    }
-    
-    // 發送 AI 回應給用戶
-    ws.send(JSON.stringify({
-        type: 'ai_response',
-        action: action,
-        requestId: requestId,
-        response: response,
-        error: error,
-        timestamp: Date.now()
-    }));
-    
-    console.log(`📤 AI 回應已發送給用戶 ${user.name}`);
-}
 
-// AI分析函數
-async function analyzeCode(code) {
-    if (!aiConfig.openai_api_key) {
-        return '⚠️ AI助教功能需要配置OpenAI API密鑰。請聯繫管理員。';
-    }
-    
-    if (!code.trim()) {
-        return '📝 目前沒有程式碼可以分析。請先輸入一些程式碼！';
-    }
-    
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: aiConfig.prompts.system_role
-                    },
-                    {
-                        role: 'user',
-                        content: `${aiConfig.prompts.analysis_prompt}\n\n${code}`
-                    }
-                ],
-                max_tokens: aiConfig.max_tokens,
-                temperature: aiConfig.temperature
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
-            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('OpenAI API 回應格式異常');
-        }
-        
-        return data.choices[0].message.content;
-        
+        ws.send(JSON.stringify({
+            type: 'ai_response',
+            action: action,
+            response: response
+        }));
+
     } catch (error) {
-        console.error('AI分析錯誤:', error.message);
-        
-        // 根據錯誤類型提供不同的回應
-        if (error.message.includes('401')) {
-            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
-        } else if (error.message.includes('429')) {
-            return '⏰ API請求頻率過高，請稍後再試。';
-        } else if (error.message.includes('quota')) {
-            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-            return '🌐 網路連接問題，請檢查網路連接後重試。';
-        } else {
-            return '😅 抱歉，AI分析功能暫時無法使用。請稍後再試或聯繫管理員。';
-        }
-    }
-}
-
-// AI代碼審查
-async function reviewCode(code) {
-    if (!aiConfig.openai_api_key) {
-        return '⚠️ AI助教功能需要配置OpenAI API密鑰。';
-    }
-    
-    if (!code.trim()) {
-        return '📝 目前沒有程式碼可以審查。';
-    }
-    
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: aiConfig.prompts.system_role
-                    },
-                    {
-                        role: 'user',
-                        content: `${aiConfig.prompts.review_prompt}\n\n${code}`
-                    }
-                ],
-                max_tokens: aiConfig.max_tokens,
-                temperature: aiConfig.temperature
-            })
-        });
-        
-        const data = await response.json();
-        return data.choices[0].message.content;
-        
-    } catch (error) {
-        return '代碼審查功能暫時無法使用。';
-    }
-}
-
-// AI除錯
-async function debugCode(code) {
-    if (!aiConfig.openai_api_key) {
-        return '⚠️ AI助教功能需要配置OpenAI API密鑰。';
-    }
-    
-    if (!code.trim()) {
-        return '📝 目前沒有程式碼可以除錯。';
-    }
-    
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: aiConfig.prompts.system_role
-                    },
-                    {
-                        role: 'user',
-                        content: `${aiConfig.prompts.debug_prompt}\n\n${code}`
-                    }
-                ],
-                max_tokens: aiConfig.max_tokens,
-                temperature: aiConfig.temperature
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
-            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('OpenAI API 回應格式異常');
-        }
-        
-        return data.choices[0].message.content;
-        
-    } catch (error) {
-        console.error('AI除錯功能錯誤:', error.message);
-        
-        // 根據錯誤類型提供不同的回應
-        if (error.message.includes('401')) {
-            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
-        } else if (error.message.includes('429')) {
-            return '⏰ API請求頻率過高，請稍後再試。';
-        } else if (error.message.includes('quota')) {
-            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
-        } else {
-            return '😅 抱歉，AI除錯功能暫時無法使用。請檢查網路連接或稍後再試。';
-        }
-    }
-}
-
-// AI改進建議
-async function improveCode(code) {
-    if (!aiConfig.openai_api_key) {
-        return '⚠️ AI助教功能需要配置OpenAI API密鑰。';
-    }
-    
-    if (!code.trim()) {
-        return '📝 目前沒有程式碼可以改進。';
-    }
-    
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: aiConfig.prompts.system_role
-                    },
-                    {
-                        role: 'user',
-                        content: `${aiConfig.prompts.improve_prompt}\n\n${code}`
-                    }
-                ],
-                max_tokens: aiConfig.max_tokens,
-                temperature: aiConfig.temperature
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error(`OpenAI API錯誤: ${response.status}`, errorData);
-            throw new Error(`OpenAI API錯誤: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('OpenAI API 回應格式異常');
-        }
-        
-        return data.choices[0].message.content;
-        
-    } catch (error) {
-        console.error('AI改進建議錯誤:', error.message);
-        
-        // 根據錯誤類型提供不同的回應
-        if (error.message.includes('401')) {
-            return '🔑 API密鑰無效，請檢查OpenAI API密鑰設定。';
-        } else if (error.message.includes('429')) {
-            return '⏰ API請求頻率過高，請稍後再試。';
-        } else if (error.message.includes('quota')) {
-            return '💳 API配額已用完，請檢查OpenAI帳戶餘額。';
-        } else {
-            return '😅 抱歉，AI改進建議功能暫時無法使用。請稍後再試。';
-        }
-    }
-}
-
-// AI運行代碼分析
-async function runCodeWithAI(code) {
-    if (!code.trim()) {
-        return '📝 請先在編輯器中輸入一些 Python 程式碼，然後再使用 AI 運行代碼功能！';
-    }
-    
-    console.log(`🐍 [runCodeWithAI] 開始執行Python代碼: ${code.substring(0, 100)}...`);
-    
-    // 首先嘗試實際執行Python代碼
-    return new Promise((resolve) => {
-        executePythonCode(code, async (executionResult) => {
-            console.log(`📋 [runCodeWithAI] Python執行結果:`, executionResult);
-            
-            let finalResponse = '';
-            
-            if (executionResult.success) {
-                // 執行成功
-                finalResponse = `🐍 **Python 代碼執行結果**
-
-**✅ 執行成功！**
-
-**📝 代碼：**
-\`\`\`python
-${code}
-\`\`\`
-
-**🖥️ 輸出結果：**
-\`\`\`
-${executionResult.output}
-\`\`\`
-
-**💡 執行說明：**
-程式碼已在服務器上成功執行並返回結果。`;
-                
-                // 如果配置了AI，添加AI分析
-                if (aiConfig.openai_api_key) {
-                    try {
-                        console.log(`🤖 [runCodeWithAI] 正在請求AI分析執行結果...`);
-                        const aiAnalysis = await getAIAnalysis(code, executionResult.output);
-                        finalResponse += `
-
-**🤖 AI 助教分析：**
-${aiAnalysis}`;
-                    } catch (error) {
-                        console.error(`❌ [runCodeWithAI] AI分析錯誤:`, error);
-                    }
-                }
-                
-            } else {
-                // 執行失敗
-                finalResponse = `🐍 **Python 代碼執行結果**
-
-**❌ 執行出現錯誤**
-
-**📝 代碼：**
-\`\`\`python
-${code}
-\`\`\`
-
-**🚨 錯誤信息：**
-\`\`\`
-${executionResult.output}
-\`\`\`
-
-**💡 錯誤解決建議：**
-1. 檢查語法是否正確（括號、縮進、拼寫）
-2. 確認變數名稱是否正確
-3. 檢查是否遺漏了必要的函數或語句
-4. 對於變數賦值結果，使用 print() 來顯示： \`print(x)\``;
-                
-                // 如果配置了AI，請求錯誤分析
-                if (aiConfig.openai_api_key) {
-                    try {
-                        console.log(`🤖 [runCodeWithAI] 正在請求AI錯誤分析...`);
-                        const aiErrorAnalysis = await getAIErrorAnalysis(code, executionResult.output);
-                        finalResponse += `
-
-**🤖 AI 助教診斷：**
-${aiErrorAnalysis}`;
-                    } catch (error) {
-                        console.error(`❌ [runCodeWithAI] AI錯誤分析失敗:`, error);
-                    }
-                }
-            }
-            
-            resolve(finalResponse);
-        });
-    });
-}
-
-// AI分析執行結果（輔助函數）
-async function getAIAnalysis(code, output) {
-    const analysisPrompt = `
-作為Python程式設計助教，請分析以下已執行的程式碼和輸出結果：
-
-程式碼：
-\`\`\`python
-${code}
-\`\`\`
-
-實際輸出：
-\`\`\`
-${output}
-\`\`\`
-
-請提供：
-1. **結果解釋：** 解釋這個輸出結果的含義
-2. **程式邏輯：** 說明程式是如何得到這個結果的
-3. **知識點：** 這段程式碼涉及哪些Python概念
-4. **擴展建議：** 可以如何改進或擴展這段程式碼
-
-請用繁體中文回答，語氣友善且具教育性。
-`;
-    
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: aiConfig.model,
-            messages: [
-                {
-                    role: 'system',
-                    content: '你是一位經驗豐富的Python程式設計助教，專門協助學生理解程式碼執行結果。'
-                },
-                {
-                    role: 'user',
-                    content: analysisPrompt
-                }
-            ],
-            max_tokens: aiConfig.max_tokens,
-            temperature: 0.3
-        })
-    });
-    
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-// AI錯誤分析（輔助函數）
-async function getAIErrorAnalysis(code, errorOutput) {
-    const errorPrompt = `
-作為Python程式設計助教，請幫助學生分析以下程式碼的錯誤：
-
-程式碼：
-\`\`\`python
-${code}
-\`\`\`
-
-錯誤信息：
-\`\`\`
-${errorOutput}
-\`\`\`
-
-請提供：
-1. **錯誤原因：** 用簡單的話解釋為什麼會出現這個錯誤
-2. **修正方法：** 提供具體的修正建議和修正後的程式碼
-3. **預防措施：** 如何避免類似錯誤
-4. **相關概念：** 涉及的Python基礎概念說明
-
-請用繁體中文回答，提供清楚的解決方案，語氣要鼓勵學習。
-`;
-    
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: aiConfig.model,
-            messages: [
-                {
-                    role: 'system',
-                    content: '你是一位耐心的Python程式設計助教，專門幫助學生理解和修正程式錯誤。'
-                },
-                {
-                    role: 'user',
-                    content: errorPrompt
-                }
-            ],
-            max_tokens: aiConfig.max_tokens,
-            temperature: 0.3
-        })
-    });
-    
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
-
-// AI協作指導
-async function guideCollaboration(code, context) {
-    if (!aiConfig.openai_api_key) {
-        return '⚠️ AI助教功能需要配置OpenAI API密鑰。';
-    }
-    
-    try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: aiConfig.prompts.system_role
-                    },
-                    {
-                        role: 'user',
-                        content: `${aiConfig.prompts.guide_prompt}\n\n在協作程式設計環境中，目前的程式碼是：\n\n${code}\n\n情境：${context || '一般協作'}\n\n請提供協作指導建議。`
-                    }
-                ],
-                max_tokens: aiConfig.max_tokens,
-                temperature: aiConfig.temperature
-            })
-        });
-        
-        const data = await response.json();
-        return data.choices[0].message.content;
-        
-    } catch (error) {
-        return '協作指導功能暫時無法使用。';
-    }
-}
-
-// 🆕 程式碼差異分析函數
-function performDifferenceAnalysis(code1, code2) {
-    const text1 = (code1 || '').trim();
-    const text2 = (code2 || '').trim();
-    
-    if (text1 === text2) {
-        return {
-            addedLines: 0,
-            removedLines: 0,
-            modifiedLines: 0,
-            changeType: 'identical',
-            hasSignificantChanges: false,
-            similarity: 100
-        };
-    }
-    
-    const lines1 = text1.split('\n').map(line => line.trim());
-    const lines2 = text2.split('\n').map(line => line.trim());
-    
-    let addedLines = 0;
-    let removedLines = 0;
-    let modifiedLines = 0;
-    
-    // 簡單的行級差異分析
-    const maxLines = Math.max(lines1.length, lines2.length);
-    const commonLines = Math.min(lines1.length, lines2.length);
-    
-    // 分析共同行的修改
-    for (let i = 0; i < commonLines; i++) {
-        if (lines1[i] !== lines2[i]) {
-            modifiedLines++;
-        }
-    }
-    
-    // 分析增減行
-    if (lines2.length > lines1.length) {
-        addedLines = lines2.length - lines1.length;
-    } else if (lines1.length > lines2.length) {
-        removedLines = lines1.length - lines2.length;
-    }
-    
-    // 判斷變更類型
-    let changeType = 'complex';
-    if (addedLines > 0 && removedLines === 0 && modifiedLines === 0) {
-        changeType = 'addition_only';
-    } else if (addedLines === 0 && removedLines > 0 && modifiedLines === 0) {
-        changeType = 'deletion_only';
-    } else if (addedLines === 0 && removedLines === 0 && modifiedLines > 0) {
-        changeType = 'modification_only';
-    } else if (addedLines > 0 && removedLines === 0) {
-        changeType = 'addition_with_modification';
-    } else if (removedLines > 0 && addedLines === 0) {
-        changeType = 'deletion_with_modification';
-    }
-    
-    // 判斷是否有重大變更
-    const totalChanges = addedLines + removedLines + modifiedLines;
-    const hasSignificantChanges = 
-        totalChanges > 5 || 
-        Math.abs(text1.length - text2.length) > 100 ||
-        modifiedLines > commonLines * 0.5; // 超過50%的行被修改
-    
-    // 計算相似度 (簡單演算法)
-    const similarity = Math.round((1 - totalChanges / Math.max(lines1.length, lines2.length, 1)) * 100);
-    
-    return {
-        addedLines,
-        removedLines,
-        modifiedLines,
-        changeType,
-        hasSignificantChanges,
-        similarity: Math.max(0, similarity)
-    };
-}
-
-// AI衝突分析
-async function analyzeConflict(conflictData) {
-    console.log(`🔍 [analyzeConflict] 收到的衝突數據:`, conflictData);
-    
-    if (!aiConfig.openai_api_key) {
-        return `🤖 **協作衝突分析** 
-        
-**🔍 衝突原因：**
-${conflictData?.conflictUser || '其他同學'}正在同時修改程式碼，形成協作衝突。
-
-**💡 解決建議：**
-1. **即時溝通：** 在聊天室與${conflictData?.conflictUser || '其他同學'}討論
-2. **選擇版本：** 比較雙方的修改，選擇更好的版本  
-3. **協作分工：** 將不同功能分配給不同同學
-4. **手動合併：** 結合兩個版本的優點
-
-**🚀 預防措施：**
-- 修改前先在聊天室告知其他同學
-- 使用註解標記自己負責的部分
-- 頻繁保存和同步程式碼
-
-💡 提示：配置OpenAI API密鑰可獲得更詳細的AI分析。`;
-    }
-    
-    if (!conflictData) {
-        console.log(`⚠️ [analyzeConflict] 衝突數據為空，提供基本分析`);
-        return `🤖 **協作衝突基本分析**
-
-**🔍 衝突原因：**
-檢測到多人協作衝突，需要協調解決。
-
-**💡 解決建議：**
-1. **即時溝通** - 在聊天室與同學討論
-2. **協調編輯** - 避免同時修改相同部分
-3. **版本選擇** - 比較修改內容，選擇較好版本
-
-建議配置AI功能以獲得更詳細分析。`;
-    }
-    
-    const { userCode = '', serverCode = '', userVersion = 0, serverVersion = 0, conflictUser = '其他同學', roomId = '未知房間' } = conflictData;
-    
-    console.log(`🔍 [analyzeConflict] 解析後的數據:`, {
-        userCodeLength: userCode.length,
-        serverCodeLength: serverCode.length,
-        userVersion,
-        serverVersion,
-        conflictUser,
-        roomId
-    });
-    
-    try {
-        // 進行差異分析
-        const diffAnalysis = performDifferenceAnalysis(userCode, serverCode);
-        
-        const conflictPrompt = `
-作為Python程式設計助教，請分析以下協作衝突情況並提供詳細的解決建議：
-
-**協作衝突情況：**
-- 房間：${roomId}
-- 衝突同學：${conflictUser}
-- 我的版本：${userVersion} (${userCode.length} 字符)
-- 同學版本：${serverVersion} (${serverCode.length} 字符)
-
-**差異分析結果：**
-- 新增行數：${diffAnalysis.addedLines}
-- 刪除行數：${diffAnalysis.removedLines}  
-- 修改行數：${diffAnalysis.modifiedLines}
-- 變更類型：${diffAnalysis.changeType}
-- 重大變更：${diffAnalysis.hasSignificantChanges ? '是' : '否'}
-
-**我的程式碼：**
-\`\`\`python
-${userCode || '# (目前是空白代碼)'}
-\`\`\`
-
-**同學的程式碼：**
-\`\`\`python
-${serverCode || '# (同學的代碼)'}
-\`\`\`
-
-請提供：
-1. **衝突原因分析**：為什麼會發生這個衝突？
-2. **詳細差異比較**：兩個版本的具體差異是什麼？
-3. **合併建議**：如何最好地合併這兩個版本？哪些部分應該保留？
-4. **接受/拒絕建議**：基於代碼品質和功能完整性，建議接受還是拒絕對方的修改？
-5. **協作策略**：如何避免未來的協作衝突？
-
-請用繁體中文回答，使用清楚的段落和標題格式，提供具體可行的建議。重點關注代碼品質、功能完整性和協作效率。
-        `;
-        
-        console.log(`📡 [analyzeConflict] 向OpenAI發送請求...`);
-        
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${aiConfig.openai_api_key}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: aiConfig.model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: '你是一位經驗豐富的程式設計助教，專門協助學生解決協作程式設計中的衝突問題。請提供實用、友善的建議，並使用清楚的段落格式。'
-                    },
-                    {
-                        role: 'user',
-                        content: conflictPrompt
-                    }
-                ],
-                max_tokens: Math.min(aiConfig.max_tokens, 1500), // 限制token數量提高速度
-                temperature: 0.3 // 降低temperature提高穩定性
-            })
-        });
-        
-        if (!response.ok) {
-            console.error(`❌ [analyzeConflict] OpenAI API錯誤: ${response.status}`);
-            throw new Error(`OpenAI API錯誤: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        const aiResponse = data.choices[0].message.content;
-        console.log(`✅ [analyzeConflict] AI回應成功，長度: ${aiResponse.length}`);
-        return aiResponse;
-        
-    } catch (error) {
-        console.error('❌ [analyzeConflict] AI衝突分析錯誤:', error);
-        return `🤖 **協作衝突快速分析** 
-
-**🔍 衝突原因：**
-多位同學同時修改程式碼，導致協作衝突。
-
-**💡 解決建議：**
-1. **溝通協調：** 在聊天室與${conflictUser}討論各自的修改內容
-2. **版本選擇：** 比較兩個版本，選擇較好的一個
-3. **手動合併：** 將兩個版本的優點結合起來
-4. **分工協作：** 將不同功能分配給不同同學
-
-**🚀 預防措施：**
-- 修改前先在聊天室告知其他同學
-- 頻繁保存和同步程式碼
-- 使用註解標記自己負責的部分
-
-⚠️ AI詳細分析暫時無法使用，但以上建議仍然有效。`;
+        console.error('❌ AI 請求處理失敗:', error);
+        ws.send(JSON.stringify({
+            type: 'ai_error',
+            message: error.message
+        }));
     }
 }
 
@@ -2470,9 +1732,16 @@ function broadcastToRoom(roomId, message, excludeUserId = null) {
     
     console.log(`📡 開始廣播到房間 ${roomId}，房間內有 ${Object.keys(room.users).length} 個用戶`);
     
+    // 添加房間資訊到消息中
+    const messageWithRoom = {
+        ...message,
+        roomId: roomId
+    };
+    
     let successCount = 0;
     let failureCount = 0;
     
+    // 發送給房間內的用戶
     for (const [userId, user] of Object.entries(room.users)) {
         if (excludeUserId && userId === excludeUserId) {
             console.log(`⏭️ 跳過發送者 ${userId}`);
@@ -2484,7 +1753,7 @@ function broadcastToRoom(roomId, message, excludeUserId = null) {
             try {
                 // 為每個用戶個性化消息
                 const personalizedMessage = {
-                    ...message,
+                    ...messageWithRoom,
                     recipientId: userId,
                     recipientName: user.userName
                 };
@@ -2496,11 +1765,36 @@ function broadcastToRoom(roomId, message, excludeUserId = null) {
                 console.error(`❌ 發送消息給用戶 ${userId} 失敗:`, error);
                 failureCount++;
             }
-            } else {
-                console.log(`❌ 用戶 ${userId} 連接不可用`);
+        } else {
+            console.log(`❌ 用戶 ${userId} 連接不可用`);
             failureCount++;
-            }
         }
+    }
+    
+    // 確保教師也收到消息（除非是教師發送的消息）
+    if (!message.isTeacher) {
+        teacherMonitors.forEach(teacherId => {
+            if (excludeUserId && teacherId === excludeUserId) return;
+            
+            const teacher = users[teacherId];
+            if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
+                try {
+                    teacher.ws.send(JSON.stringify({
+                        ...messageWithRoom,
+                        fromRoom: roomId
+                    }));
+                    console.log(`✅ 消息已發送給教師 ${teacherId}`);
+                    successCount++;
+                } catch (error) {
+                    console.error(`❌ 發送消息給教師 ${teacherId} 失敗:`, error);
+                    failureCount++;
+                }
+            } else {
+                console.log(`⚠️ 教師 ${teacherId} 的WebSocket連接不可用`);
+                failureCount++;
+            }
+        });
+    }
     
     console.log(`📊 廣播結果：成功 ${successCount} 個，失敗 ${failureCount} 個`);
 }
