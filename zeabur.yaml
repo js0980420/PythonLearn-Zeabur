@@ -20,7 +20,8 @@ services:
       OPENAI_TIMEOUT: 30000
     build:
       commands:
-        - npm install --production --no-optional
+        - npm ci
+        - npm run build
     start:
       command: npm start
     port: 8080

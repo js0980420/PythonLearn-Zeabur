@@ -1,16 +1,41 @@
-const { Configuration, OpenAIApi } = require('openai');
+let openai;
+try {
+    const { Configuration, OpenAIApi } = require('openai');
+    openai = { Configuration, OpenAIApi };
+} catch (error) {
+    console.warn('⚠️ OpenAI 模組未安裝，AI 助教功能將不可用');
+    openai = null;
+}
+
 const aiConfig = require('../config/ai_config');
 
 class AIAssistant {
     constructor() {
-        const configuration = new Configuration({
-            apiKey: aiConfig.apiKey
-        });
-        this.openai = new OpenAIApi(configuration);
-        this.modelConfig = aiConfig.modelConfig;
+        if (!openai) {
+            this.isAvailable = false;
+            console.warn('⚠️ AI 助教未啟用：找不到 OpenAI 模組');
+            return;
+        }
+
+        try {
+            const configuration = new openai.Configuration({
+                apiKey: aiConfig.apiKey
+            });
+            this.openai = new openai.OpenAIApi(configuration);
+            this.modelConfig = aiConfig.modelConfig;
+            this.isAvailable = true;
+            console.log('✅ AI 助教初始化成功');
+        } catch (error) {
+            this.isAvailable = false;
+            console.error('❌ AI 助教初始化失敗:', error);
+        }
     }
 
     async explainCode(code) {
+        if (!this.isAvailable) {
+            return '抱歉，AI 助教目前無法使用。請稍後再試。';
+        }
+
         try {
             const response = await this.openai.createChatCompletion({
                 ...this.modelConfig,
@@ -22,11 +47,15 @@ class AIAssistant {
             return response.data.choices[0].message.content;
         } catch (error) {
             console.error('❌ AI 解釋程式碼失敗:', error);
-            throw new Error('AI 解釋程式碼時發生錯誤');
+            return '抱歉，AI 解釋程式碼時發生錯誤。請稍後再試。';
         }
     }
 
     async checkErrors(code) {
+        if (!this.isAvailable) {
+            return '抱歉，AI 助教目前無法使用。請稍後再試。';
+        }
+
         try {
             const response = await this.openai.createChatCompletion({
                 ...this.modelConfig,
@@ -38,11 +67,15 @@ class AIAssistant {
             return response.data.choices[0].message.content;
         } catch (error) {
             console.error('❌ AI 檢查錯誤失敗:', error);
-            throw new Error('AI 檢查錯誤時發生錯誤');
+            return '抱歉，AI 檢查錯誤時發生錯誤。請稍後再試。';
         }
     }
 
     async suggestImprovements(code) {
+        if (!this.isAvailable) {
+            return '抱歉，AI 助教目前無法使用。請稍後再試。';
+        }
+
         try {
             const response = await this.openai.createChatCompletion({
                 ...this.modelConfig,
@@ -54,11 +87,15 @@ class AIAssistant {
             return response.data.choices[0].message.content;
         } catch (error) {
             console.error('❌ AI 提供改進建議失敗:', error);
-            throw new Error('AI 提供改進建議時發生錯誤');
+            return '抱歉，AI 提供改進建議時發生錯誤。請稍後再試。';
         }
     }
 
     async analyzeConflict(originalCode, currentCode, incomingCode) {
+        if (!this.isAvailable) {
+            return '抱歉，AI 助教目前無法使用。請稍後再試。';
+        }
+
         try {
             const response = await this.openai.createChatCompletion({
                 ...this.modelConfig,
@@ -82,11 +119,15 @@ ${incomingCode}`
             return response.data.choices[0].message.content;
         } catch (error) {
             console.error('❌ AI 分析衝突失敗:', error);
-            throw new Error('AI 分析衝突時發生錯誤');
+            return '抱歉，AI 分析衝突時發生錯誤。請稍後再試。';
         }
     }
 
     async analyzeCodeExecution(code, output, error = null) {
+        if (!this.isAvailable) {
+            return '抱歉，AI 助教目前無法使用。請稍後再試。';
+        }
+
         try {
             const response = await this.openai.createChatCompletion({
                 ...this.modelConfig,
@@ -109,7 +150,7 @@ ${error ? `錯誤信息：\n${error}` : ''}`
             return response.data.choices[0].message.content;
         } catch (error) {
             console.error('❌ AI 分析執行結果失敗:', error);
-            throw new Error('AI 分析執行結果時發生錯誤');
+            return '抱歉，AI 分析執行結果時發生錯誤。請稍後再試。';
         }
     }
 }
