@@ -193,6 +193,7 @@ async function initializeDatabase(connection) {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 room_id VARCHAR(100),
                 user_id VARCHAR(100),
+                user_name VARCHAR(100),
                 message_content TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
@@ -780,7 +781,7 @@ async function handleJoinRoom(ws, message) {
     
     console.log(`🚀 用戶 ${userName} 嘗試加入房間 ${roomId}`);
 
-    // 創建房間（如果不存在）
+    // 檢查房間是否存在，如果不存在則創建
     if (!rooms[roomId]) {
         const newRoom = await createRoom(roomId);
         rooms[roomId] = newRoom;
@@ -791,22 +792,32 @@ async function handleJoinRoom(ws, message) {
     
     // 確保 room 對象及其 users 屬性存在
     if (!room || !room.users) {
-        console.error(`❌ 嚴重錯誤：無法獲取或初始化房間 ${roomId} 的用戶列表。`);
         ws.send(JSON.stringify({
-                type: 'join_room_error',
-            error: 'room_initialization_failed',
-            message: `無法初始化房間 ${roomId}，請稍後再試。`
-            }));
-            return;
-        }
-
-    // 清理房間內無效的用戶連接
-    const invalidUserIds = [];
-    Object.entries(room.users).forEach(([userId, user]) => {
-        if (!user.ws || user.ws.readyState !== WebSocket.OPEN) {
-            invalidUserIds.push(userId);
+            type: 'join_room_error',
+            error: 'room_error',
+            message: '房間初始化失敗'
+        }));
+        return;
     }
-    });
+
+    // 檢查用戶名是否已存在於該房間
+    const isUserNameTaken = Object.values(room.users).some(user => 
+        user.userName === userName && user.ws.readyState === WebSocket.OPEN
+    );
+
+    if (isUserNameTaken) {
+        ws.send(JSON.stringify({
+            type: 'join_room_error',
+            error: 'name_duplicate',
+            message: '此用戶名稱在房間中已被使用，請使用其他名稱'
+        }));
+        return;
+    }
+
+    // 清理房間中的無效連接
+    const invalidUserIds = Object.keys(room.users).filter(userId => 
+        !room.users[userId].ws || room.users[userId].ws.readyState !== WebSocket.OPEN
+    );
     
     invalidUserIds.forEach(userId => {
         delete room.users[userId];
@@ -817,103 +828,119 @@ async function handleJoinRoom(ws, message) {
     const existingUserInRoom = room.users[ws.userId];
     const isReconnect = existingUserInRoom && existingUserInRoom.userName === userName;
 
-    // 更新用戶信息
-    ws.currentRoom = roomId;
-    ws.userName = userName;
-    
-    // 更新全域用戶信息
-    if (users[ws.userId]) {
-        users[ws.userId].roomId = roomId;
-        users[ws.userId].name = userName;
-        console.log(`📝 更新全域用戶信息: ${ws.userId} -> 房間: ${roomId}, 名稱: ${userName}`);
-    } else {
-        console.warn(`⚠️ 警告：在全域用戶列表中找不到用戶 ${ws.userId}`);
+    try {
+        // 更新用戶信息
+        ws.currentRoom = roomId;
+        ws.userName = userName;
+        
+        // 更新全域用戶信息
+        if (users[ws.userId]) {
+            users[ws.userId].roomId = roomId;
+            users[ws.userId].name = userName;
+            console.log(`📝 更新全域用戶信息: ${ws.userId} -> 房間: ${roomId}, 名稱: ${userName}`);
+        }
+        
+        // 添加用戶到房間
+        room.users[ws.userId] = {
+            userId: ws.userId,
+            userName: userName,
+            ws: ws,
+            joinTime: new Date(),
+            isActive: true,
+            cursor: null
+        };
+
+        // 獲取當前有效用戶列表
+        const activeUsers = Object.values(room.users)
+            .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+            .map(u => ({
+                userId: u.userId,
+                userName: u.userName,
+                isActive: u.isActive
+            }));
+
+        // 發送加入成功消息給當前用戶
+        ws.send(JSON.stringify({
+            type: 'room_joined',
+            roomId: roomId,
+            userName: userName,
+            userId: ws.userId,
+            code: room.code || '',
+            version: room.version || 0,
+            users: activeUsers,
+            chatHistory: room.chatHistory || [],
+            isReconnect: isReconnect
+        }));
+        
+        // 廣播用戶加入消息給房間內其他用戶
+        broadcastToRoom(roomId, {
+            type: isReconnect ? 'user_reconnected' : 'user_joined',
+            userName: userName,
+            userId: ws.userId,
+            users: activeUsers
+        }, ws.userId);
+        
+        console.log(`✅ ${userName} 成功加入房間 ${roomId}，當前在線用戶: ${activeUsers.length} 人`);
+    } catch (error) {
+        console.error(`❌ 加入房間時發生錯誤:`, error);
+        // 發生錯誤時，清理已添加的用戶信息
+        if (room.users[ws.userId]) {
+            delete room.users[ws.userId];
+        }
+        ws.currentRoom = null;
+        ws.userName = null;
+        
+        ws.send(JSON.stringify({
+            type: 'join_room_error',
+            error: 'server_error',
+            message: '加入房間時發生錯誤，請稍後重試'
+        }));
     }
-    
-    // 添加用戶到房間
-    room.users[ws.userId] = {
-        userId: ws.userId,
-        userName: userName,
-        ws: ws,
-        joinTime: new Date(),
-        isActive: true,
-        cursor: null // 初始化游標位置
-    };
-
-    console.log(`👤 ${userName} ${isReconnect ? '重連到' : '加入'} 房間: ${roomId}`);
-    console.log(`📊 房間 ${roomId} 現有用戶數: ${Object.keys(room.users).length}`);
-    
-    // 獲取當前有效用戶列表
-    const activeUsers = Object.values(room.users).filter(u => 
-        u.ws && u.ws.readyState === WebSocket.OPEN
-    ).map(u => ({
-        userId: u.userId,
-        userName: u.userName,
-        isActive: u.isActive
-    }));
-
-    // 發送加入成功消息給當前用戶
-    ws.send(JSON.stringify({
-        type: 'room_joined',
-        roomId: roomId,
-        userName: userName,
-        userId: ws.userId,
-        code: room.code || '',
-        version: room.version || 0,
-        users: activeUsers,
-        chatHistory: room.chatHistory || [],
-        isReconnect: isReconnect
-    }));
-    
-    // 廣播用戶加入消息給房間內其他用戶
-    const joinMessage = {
-        type: isReconnect ? 'user_reconnected' : 'user_joined',
-        userName: userName,
-        userId: ws.userId,
-        users: activeUsers
-    };
-
-    broadcastToRoom(roomId, joinMessage, ws.userId);
-    
-    console.log(`✅ ${userName} 成功加入房間 ${roomId}，當前在線用戶: ${activeUsers.length} 人`);
 }
 
 // 離開房間處理
 function handleLeaveRoom(ws, message) {
-    const roomId = message.room || ws.currentRoom;
+    const roomId = ws.currentRoom;
+    const userName = ws.userName;
+    
     if (!roomId || !rooms[roomId]) {
-        console.error(`❌ 房間不存在: ${roomId}`);
+        console.warn(`⚠️ 用戶嘗試離開不存在的房間: ${roomId}`);
         return;
     }
     
     const room = rooms[roomId];
-    const userName = ws.userName;
+    
+    // 從房間中移除用戶
+    if (room.users[ws.userId]) {
+        delete room.users[ws.userId];
+        console.log(`👋 用戶 ${userName} 離開房間 ${roomId}`);
         
-        // 從房間中移除用戶
-    delete room.users[ws.userId];
+        // 獲取更新後的用戶列表
+        const activeUsers = Object.values(room.users)
+            .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+            .map(u => ({
+                userId: u.userId,
+                userName: u.userName,
+                isActive: u.isActive
+            }));
         
-        // 通知其他用戶有用戶離開，並發送更新後的用戶列表
+        // 廣播用戶離開消息（包含更新後的用戶列表）
         broadcastToRoom(roomId, {
             type: 'user_left',
             userName: userName,
-        userId: ws.userId,
-        timestamp: Date.now()
-    }, ws.userId);
+            users: activeUsers
+        });
         
-        console.log(`👋 ${userName} 離開房間: ${roomId}`);
-        
-    // 如果房間空了，清理房間
-    if (Object.keys(room.users).length === 0) {
-        console.log(`⏰ 房間 ${roomId} 已空，將在 2 分鐘後清理`);
-            setTimeout(() => {
-            if (rooms[roomId]) {
-                delete rooms[roomId];
-                    console.log(`🧹 清理空房間: ${roomId}`);
-                    // 房間被清理時也更新統計
-                    broadcastStatsToTeachers();
-                }
-        }, 120000);
+        // 如果房間空了，清理房間
+        if (Object.keys(room.users).length === 0) {
+            console.log(`🧹 清理空房間: ${roomId}`);
+            delete rooms[roomId];
         }
+    }
+    
+    // 清理用戶的房間信息
+    ws.currentRoom = null;
+    ws.userName = null;
 }
 
 // 游標變更處理
@@ -940,48 +967,42 @@ function handleCursorChange(ws, message) {
 
 // 聊天消息處理
 async function handleChatMessage(ws, message) {
-    const roomId = message.room || ws.currentRoom;
-    if (!roomId || !rooms[roomId]) {
-        console.error(`❌ 房間不存在: ${roomId}`);
-        return;
-    }
+    const userId = ws.userId;
+    if (!users[userId]) return;
 
-    const room = rooms[roomId];
-    const chatMessage = {
-        id: Date.now() + Math.random(), // 使用時間戳和隨機數生成唯一ID
-        userId: ws.userId,
-        userName: ws.userName,
-        message: message.message,
-        timestamp: Date.now(),
-        isHistory: false
-    };
+    const { roomId, chatMessage, userName } = message;
+    console.log(`💬 ${userName}: ${chatMessage}`);
 
-    // 添加到房間聊天歷史
-    room.chatHistory = room.chatHistory || [];
-    room.chatHistory.push(chatMessage);
-    
+    // 保存到數據庫
     if (isDatabaseAvailable) {
-        // 數據庫模式：保存到數據庫
         try {
-            await pool.execute(
-                'INSERT INTO chat_messages (room_id, user_id, message_content) VALUES (?, ?, ?)',
-                [roomId, ws.userId, message.message]
-            );
-            console.log(`💬 聊天消息已保存到數據庫: 房間 ${roomId}, 用戶 ${ws.userName}`);
-        } catch (error) {
-            console.error(`❌ 保存聊天消息到數據庫失敗:`, error.message);
+            const query = 'INSERT INTO chat_messages (room_id, user_id, user_name, message_content) VALUES (?, ?, ?, ?)';
+            await pool.execute(query, [roomId, userId, userName, chatMessage]);
+        } catch (dbError) {
+            console.error(`❌ 聊天消息[${roomId}]保存到數據庫失敗:`, dbError.message);
         }
-    } else {
-        // 本地模式：保存到文件
-        saveDataToFile();
     }
-    
-    console.log(`💬 ${ws.userName}: ${message.message}`);
-    
-    // 廣播聊天消息
+
+    // 廣播給房間內的所有人（包括發送者自己）
     broadcastToRoom(roomId, {
         type: 'chat_message',
-        ...chatMessage
+        userName: userName,
+        message: chatMessage,
+        isTeacher: false
+    });
+
+    // 🛠️ 新增：同時將學生的聊天訊息轉發給正在監控此房間的教師
+    teacherMonitors.forEach(teacherWs => {
+        if (teacherWs.readyState === WebSocket.OPEN && teacherWs.monitorRoomId === roomId) {
+            teacherWs.send(JSON.stringify({
+                type: 'chat_message',
+                userName: userName,
+                message: chatMessage,
+                isTeacher: false,
+                roomId: roomId // 讓教師端知道是哪個房間的消息
+            }));
+            console.log(`👨‍🏫 已將 ${userName} 的消息轉發給監控中的教師`);
+        }
     });
 }
 
@@ -1097,11 +1118,6 @@ function handleTeacherBroadcast(ws, message) {
 function handleTeacherChat(ws, message) {
     if (!teacherMonitors.has(ws.userId)) {
         console.log(`❌ 非教師用戶嘗試發送教師聊天: ${ws.userId}`);
-        ws.send(JSON.stringify({
-            type: 'error',
-            error: '權限不足',
-            message: '只有教師可以發送教師消息'
-        }));
         return;
     }
     
@@ -1116,29 +1132,19 @@ function handleTeacherChat(ws, message) {
         userName: teacherName || '教師',
         message: chatMessage,
         timestamp: Date.now(),
-        isTeacher: true,
-        roomName: targetRoom === 'all' ? '所有房間' : targetRoom
+        isTeacher: true
     };
     
     if (targetRoom === 'all') {
         // 廣播到所有房間
-        Object.keys(rooms).forEach(roomId => {
-            const room = rooms[roomId];
-            if (!room.chatHistory) {
-                room.chatHistory = [];
-            }
-            
+        Object.values(rooms).forEach(room => {
             // 添加到房間聊天歷史
-            room.chatHistory.push({
-                ...teacherChatMessage,
-                roomName: roomId
-            });
+            room.chatHistory.push(teacherChatMessage);
             
             // 廣播給房間內的所有用戶
-            broadcastToRoom(roomId, {
+            broadcastToRoom(room.id, {
                 type: 'chat_message',
-                ...teacherChatMessage,
-                roomName: roomId
+                ...teacherChatMessage
             });
         });
         
@@ -1149,20 +1155,17 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage
+                        ...teacherChatMessage,
+                        roomName: '所有房間'
                     }));
                 }
             }
         });
         
         console.log(`📢 教師消息已廣播到所有房間`);
-    } else if (rooms[targetRoom]) {
+    } else if (targetRoom && rooms[targetRoom]) {
         // 發送到特定房間
         const room = rooms[targetRoom];
-        if (!room.chatHistory) {
-            room.chatHistory = [];
-        }
-        
         room.chatHistory.push(teacherChatMessage);
         
         broadcastToRoom(targetRoom, {
@@ -1177,7 +1180,8 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage
+                        ...teacherChatMessage,
+                        roomName: targetRoom
                     }));
                 }
             }
@@ -1186,11 +1190,6 @@ function handleTeacherChat(ws, message) {
         console.log(`💬 教師消息已發送到房間 ${targetRoom}`);
     } else {
         console.log(`❌ 目標房間不存在: ${targetRoom}`);
-        ws.send(JSON.stringify({
-            type: 'error',
-            error: '房間不存在',
-            message: `房間 "${targetRoom}" 不存在`
-        }));
     }
 }
 
@@ -2472,9 +2471,9 @@ function broadcastToRoom(roomId, message, excludeUserId = null) {
             }
             } else {
                 console.log(`❌ 用戶 ${userId} 連接不可用`);
-            failureCount++;
-            }
+        failureCount++;
         }
+    }
     
     console.log(`📊 廣播結果：成功 ${successCount} 個，失敗 ${failureCount} 個`);
 }

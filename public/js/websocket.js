@@ -10,6 +10,8 @@ class WebSocketManager {
         this.messageQueue = [];
         this.heartbeatInterval = null;
         this.lastHeartbeat = 0;
+        // Callback to be called when a username is duplicated
+        this.onUsernameDuplicate = null; 
     }
 
     // 檢查連接狀態
@@ -27,8 +29,8 @@ class WebSocketManager {
         
         // 檢查是否為本地開發環境
         const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname.includes('192.168.');
+                             window.location.hostname === '127.0.0.1' || 
+                             window.location.hostname.includes('192.168.');
         
         if (isLocalhost) {
             console.log('🏠 檢測到本地開發環境');
@@ -36,7 +38,7 @@ class WebSocketManager {
         } else {
             // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${window.location.host}`;
         }
         
@@ -44,63 +46,63 @@ class WebSocketManager {
         console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
         
         try {
-        this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(wsUrl);
 
-        this.ws.onopen = () => {
-            console.log('✅ WebSocket 連接成功到服務器!');
-            console.log(`📍 連接地址: ${wsUrl}`);
-            this.reconnectAttempts = 0;
-                
+            this.ws.onopen = () => {
+                console.log('✅ WebSocket 連接成功到服務器!');
+                console.log(`📍 連接地址: ${wsUrl}`);
+                this.reconnectAttempts = 0;
+                    
                 // 啟動心跳
                 this.startHeartbeat();
-                
+                    
                 // 發送加入房間請求
-            this.sendMessage({
-                type: 'join_room',
+                this.sendMessage({
+                    type: 'join_room',
                     room: roomName,
                     userName: userName
-            });
+                });
 
                 // 處理消息隊列
-            this.processMessageQueue();
-                
+                this.processMessageQueue();
+                    
                 // 觸發連接成功事件
                 if (window.onWebSocketConnected) {
                     window.onWebSocketConnected();
                 }
-        };
+            };
 
-        this.ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                this.handleMessage(message);
-            } catch (error) {
-                    console.error('❌ 解析消息失敗:', error, event.data);
-            }
-        };
-
-        this.ws.onclose = (event) => {
-                console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
-                this.stopHeartbeat();
-                
-                // 嘗試重連
-                if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
-                    this.reconnectAttempts++;
-                    console.log(`🔄 嘗試重連 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-                    setTimeout(() => {
-                        this.connect(roomName, userName);
-                    }, this.reconnectDelay * this.reconnectAttempts);
-                } else {
-                    console.log('❌ 重連次數已達上限或正常關閉');
-                    if (window.onWebSocketDisconnected) {
-                        window.onWebSocketDisconnected();
-                    }
+            this.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    this.handleMessage(message);
+                } catch (error) {
+                        console.error('❌ 解析消息失敗:', error, event.data);
                 }
             };
 
-            this.ws.onerror = (error) => {
-                console.error('❌ WebSocket 錯誤:', error);
-            };
+            this.ws.onclose = (event) => {
+                    console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
+                    this.stopHeartbeat();
+                    
+                    // 嘗試重連
+                    if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
+                        this.reconnectAttempts++;
+                        console.log(`🔄 嘗試重連 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+                        setTimeout(() => {
+                            this.connect(roomName, userName);
+                        }, this.reconnectDelay * this.reconnectAttempts);
+                    } else {
+                        console.log('❌ 重連次數已達上限或正常關閉');
+                        if (window.onWebSocketDisconnected) {
+                            window.onWebSocketDisconnected();
+                        }
+                    }
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error('❌ WebSocket 錯誤:', error);
+                };
 
         } catch (error) {
             console.error('❌ 建立 WebSocket 連接失敗:', error);
@@ -200,59 +202,38 @@ class WebSocketManager {
 
     // 處理房間加入成功
     handleRoomJoined(message) {
-        console.log(`✅ 成功加入房間: ${message.roomId}`);
-        console.log('📥 房間數據:', message);
-        console.log('   - 代碼長度:', (message.code || '').length);
-        console.log('   - 版本號:', message.version);
-        console.log('   - 用戶數量:', (message.users || []).length);
+        console.log('✅ 成功加入房間:', message);
+        this.currentRoom = message.roomId;
+        this.currentUser = message.userName;
         
-        // 更新編輯器內容 - 修復變量名稱
-        if (window.Editor && message.code !== undefined) {
-            console.log('🔄 設置編輯器代碼...');
-            window.Editor.setCode(message.code, message.version);
-            console.log('✅ 編輯器代碼已設置');
-        } else {
-            console.error('❌ 編輯器未找到或房間代碼為空');
-            console.log('   - Editor 存在:', !!window.Editor);
-            console.log('   - 代碼內容:', message.code);
+        // 切換到工作區界面
+        const loginSection = document.getElementById('loginSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        if (loginSection && workspaceSection) {
+            loginSection.style.display = 'none';
+            workspaceSection.style.display = 'block';
         }
         
-        // 初始化 SaveLoadManager
-        if (window.SaveLoadManager && typeof window.SaveLoadManager.init === 'function') {
-            const currentUser = {
-                name: this.currentUser || message.userName || '未知用戶'
-            };
-            window.SaveLoadManager.init(currentUser, message.roomId);
-            console.log('💾 SaveLoadManager 已初始化');
-        } else {
-            console.error('❌ SaveLoadManager 未找到或初始化方法不存在');
-        }
+        // 更新房間信息
+        const currentRoomEl = document.getElementById('currentRoom');
+        const currentUserNameEl = document.getElementById('currentUserName');
+        if (currentRoomEl) currentRoomEl.textContent = message.roomId;
+        if (currentUserNameEl) currentUserNameEl.textContent = message.userName;
         
         // 更新用戶列表
-        this.updateUserList(message.users);
-        
-        // 更新聊天歷史
-        if (message.chatHistory && window.chatManager) {
-            window.chatManager.loadChatHistory(message.chatHistory);
-        } else if (window.Chat) {
-            // 備用方案：使用 Chat 對象
-            if (message.chatHistory && message.chatHistory.length > 0) {
-                message.chatHistory.forEach(msg => {
-                    window.Chat.addMessage(msg.userName, msg.message, false, msg.isTeacher);
-                });
-            }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.updateUserList(message.users);
+            });
+        } else {
+            this.updateUserList(message.users);
         }
         
-        // 更新房間信息顯示
-        this.updateRoomInfo(message.roomId, message.users);
-        
-        // 顯示加入提示
-        if (window.UI) {
-            if (message.isReconnect) {
-                window.UI.showToast('重連成功', '已重新連接到房間', 'success');
-            } else {
-                window.UI.showToast('加入成功', `已加入房間 "${message.roomId}"`, 'success');
-            }
+        // 如果是重連，顯示重連成功消息
+        if (message.isReconnect && window.UI) {
+            window.UI.showToast('重連成功', '已重新連接到房間', 'success');
+        } else if (window.UI) {
+            window.UI.showToast('加入成功', `已加入房間 "${message.roomId}"`, 'success');
         }
     }
 
@@ -260,28 +241,32 @@ class WebSocketManager {
     handleJoinRoomError(message) {
         console.error('❌ 加入房間失敗:', message.message);
         
+        // 顯示錯誤提示
+        alert(message.message);
+        
         if (message.error === 'name_duplicate') {
-            // 用戶名稱重複
-            if (window.UI) {
-                window.UI.showToast('用戶名稱重複', message.message, 'error');
+            // 清空並聚焦到用戶名稱輸入框
+            const nameInput = document.getElementById('nameInput');
+            if (nameInput) {
+                nameInput.value = '';
+                nameInput.focus();
+                nameInput.style.borderColor = '#dc3545';
+                setTimeout(() => {
+                    nameInput.style.borderColor = '';
+                }, 3000);
             }
-            
-            // 提示用戶修改用戶名稱
-            const newUserName = prompt('您的用戶名稱已被使用，請輸入新的用戶名稱：', this.currentUser + '_' + Math.floor(Math.random() * 100));
-            if (newUserName && newUserName.trim()) {
-                this.currentUser = newUserName.trim();
-                // 重新嘗試加入
-                this.sendMessage({
-                    type: 'join_room',
-                    room: this.currentRoom,
-                    userName: this.currentUser
-                });
-            }
-        } else {
-            // 其他錯誤
-            if (window.UI) {
-                window.UI.showToast('加入失敗', message.message, 'error');
-            }
+        }
+        
+        // 重置連接狀態
+        this.currentRoom = null;
+        this.currentUser = null;
+        
+        // 確保留在登入畫面
+        const loginSection = document.getElementById('loginSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        if (loginSection && workspaceSection) {
+            loginSection.style.display = 'block';
+            workspaceSection.style.display = 'none';
         }
     }
 
@@ -304,7 +289,29 @@ class WebSocketManager {
     handleUserLeft(message) {
         console.log(`👋 用戶離開: ${message.userName}`);
         
-        // 更新用戶列表（需要從服務器獲取最新列表）
+        // 從當前用戶列表中移除離開的用戶
+        if (message.users) {
+            // 使用新的用戶列表更新UI
+            this.updateUserList(message.users);
+        } else {
+            // 如果沒有收到新的用戶列表，手動從現有列表中移除用戶
+            const onlineUsersElement = document.getElementById('onlineUsers');
+            if (onlineUsersElement) {
+                const userElements = onlineUsersElement.getElementsByClassName('user-indicator');
+                for (let i = userElements.length - 1; i >= 0; i--) {
+                    const userElement = userElements[i];
+                    if (userElement.textContent.includes(message.userName)) {
+                        userElement.remove();
+                        break;
+                    }
+                }
+                
+                // 如果沒有用戶了，顯示"無在線用戶"
+                if (userElements.length === 0) {
+                    onlineUsersElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
+                }
+            }
+        }
         
         // 顯示通知
         if (window.UI && message.userName !== this.currentUser) {
@@ -315,9 +322,9 @@ class WebSocketManager {
     // 處理代碼變更
     handleCodeChange(message) {
         console.log('📨 收到代碼變更消息:', message);
-        console.log('   - 來源用戶:', message.userName);
-        console.log('   - 版本號:', message.version);
-        console.log('   - 代碼長度:', (message.code || '').length);
+        console.log('   - 來源用戶:', message.userName);
+        console.log('   - 版本號:', message.version);
+        console.log('   - 代碼長度:', (message.code || '').length);
         
         // 確保編輯器存在並調用處理方法
         if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
@@ -325,8 +332,8 @@ class WebSocketManager {
             window.Editor.handleRemoteCodeChange(message);
         } else {
             console.error('❌ 編輯器未找到或方法不存在');
-            console.log('   - Editor 存在:', !!window.Editor);
-            console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
+            console.log('   - Editor 存在:', !!window.Editor);
+            console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
             
             // 降級處理：直接更新代碼
             if (window.Editor && typeof window.Editor.setCode === 'function') {
@@ -348,17 +355,16 @@ class WebSocketManager {
     // 處理聊天消息
     handleChatMessage(message) {
         if (window.Chat) {
-            const { userName, roomName, message: chatText, isTeacher } = message;
-            window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
+            window.Chat.addMessage(message.userName, message.message, false, message.isTeacher);
         }
     }
 
     // 處理AI回應
     handleAIResponse(message) {
         console.log('🤖 處理AI回應:', message.type);
-        console.log('   - 動作:', message.action);
-        console.log('   - 請求ID:', message.requestId);
-        console.log('   - 錯誤:', message.error);
+        console.log('   - 動作:', message.action);
+        console.log('   - 請求ID:', message.requestId);
+        console.log('   - 錯誤:', message.error);
         
         // 檢查是否為衝突分析回應
         if (message.action === 'conflict_analysis') {
@@ -388,10 +394,10 @@ class WebSocketManager {
         
         // 處理一般AI回應
         console.log('🔍 檢查AI助教實例可用性...');
-        console.log('   - typeof AIAssistant:', typeof AIAssistant);
-        console.log('   - AIAssistant 存在:', !!AIAssistant);
-        console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
-        console.log('   - handleAIResponse 方法存在:', !!(AIAssistant && typeof AIAssistant.handleAIResponse === 'function'));
+        console.log('   - typeof AIAssistant:', typeof AIAssistant);
+        console.log('   - AIAssistant 存在:', !!AIAssistant);
+        console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
+        console.log('   - handleAIResponse 方法存在:', !!(AIAssistant && typeof AIAssistant.handleAIResponse === 'function'));
         
         // 優先檢查window.AIAssistant，然後檢查AIAssistant
         const aiInstance = window.AIAssistant || AIAssistant;
@@ -410,11 +416,11 @@ class WebSocketManager {
             aiManager.handleResponse(message);
         } else {
             console.error('❌ AI助教管理器未找到或方法不存在');
-            console.log('   - typeof AIAssistant:', typeof AIAssistant);
-            console.log('   - AIAssistant 存在:', !!AIAssistant);
-            console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
-            console.log('   - typeof aiManager:', typeof aiManager);
-            console.log('   - aiManager 存在:', !!aiManager);
+            console.log('   - typeof AIAssistant:', typeof AIAssistant);
+            console.log('   - AIAssistant 存在:', !!AIAssistant);
+            console.log('   - window.AIAssistant 存在:', !!(window.AIAssistant));
+            console.log('   - typeof aiManager:', typeof aiManager);
+            console.log('   - aiManager 存在:', !!aiManager);
             
             // 緊急降級處理：直接顯示AI回應
             if (message.response) {
@@ -444,8 +450,8 @@ class WebSocketManager {
             window.Editor.handleExecutionResult(message);
         } else {
             console.error('❌ 編輯器未找到或方法不存在');
-            console.log('   - Editor 存在:', !!window.Editor);
-            console.log('   - handleExecutionResult 方法存在:', !!(window.Editor && window.Editor.handleExecutionResult));
+            console.log('   - Editor 存在:', !!window.Editor);
+            console.log('   - handleExecutionResult 方法存在:', !!(window.Editor && window.Editor.handleExecutionResult));
             
             // 降級處理：直接顯示結果
             if (message.success) {
@@ -562,53 +568,42 @@ class WebSocketManager {
 
     // 更新用戶列表
     updateUserList(users) {
-        console.log(`👥 準備更新用戶列表: ${users ? users.length : 0} 個用戶`);
-        console.log(`🔍 用戶數據:`, users);
-        
-        // 使用正確的元素ID
-        const userListElement = document.getElementById('onlineUsers');
-        if (!userListElement) {
-            console.warn('⚠️ 找不到 onlineUsers 元素');
-            return;
-        }
-        
-        if (!users || users.length === 0) {
-            userListElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
-            return;
-        }
-        
-        // 創建用戶列表HTML
-        let userListHTML = '<strong>在線用戶:</strong> ';
-        const userNames = users.map(user => {
-            const userName = user.userName || user.name || '匿名用戶';
-            const status = user.isActive ? '🟢' : '🔴';
-            return `${status} ${userName}`;
-        });
-        
-        userListHTML += userNames.join(', ');
-        userListElement.innerHTML = userListHTML;
-        
-        // 更新用戶計數
-        const userCountElement = document.getElementById('userCount');
-        if (userCountElement) {
-            userCountElement.textContent = users.length;
-        }
-        
-        console.log(`✅ 用戶列表已更新: ${users.length} 個用戶`);
-        console.log(`📝 顯示內容: ${userListHTML}`);
-    }
+        // 確保 DOM 已加載
+        const waitForElement = (elementId, callback, maxAttempts = 10) => {
+            let attempts = 0;
+            const checkElement = () => {
+                attempts++;
+                const element = document.getElementById(elementId);
+                if (element) {
+                    callback(element);
+                } else if (attempts < maxAttempts) {
+                    setTimeout(checkElement, 100);
+                } else {
+                    console.error(`❌ 找不到用戶列表元素 (${elementId}) - 已重試 ${maxAttempts} 次`);
+                }
+            };
+            checkElement();
+        };
 
-    // 更新房間信息
-    updateRoomInfo(roomId, users) {
-        const roomNameElement = document.getElementById('roomName');
-        if (roomNameElement) {
-            roomNameElement.textContent = roomId;
-        }
-        
-        const userCountElement = document.getElementById('userCount');
-        if (userCountElement && users) {
-            userCountElement.textContent = users.length;
-        }
+        waitForElement('onlineUsers', (onlineUsersElement) => {
+            if (!users || users.length === 0) {
+                onlineUsersElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
+                return;
+            }
+
+            // 創建用戶列表HTML
+            let userListHTML = '<strong>在線用戶:</strong> ';
+            const userNames = users.map(user => {
+                const userName = user.userName || user.name || '匿名用戶';
+                const isCurrentUser = userName === this.currentUser;
+                const status = user.isActive ? '🟢' : '🔴';
+                const userClass = isCurrentUser ? 'user-indicator current-user' : 'user-indicator';
+                return `<span class="${userClass}">${status} ${userName}${isCurrentUser ? ' (你)' : ''}</span>`;
+            });
+            
+            userListHTML += userNames.join(' ');
+            onlineUsersElement.innerHTML = userListHTML;
+        });
     }
 
     // 處理消息隊列
@@ -658,10 +653,15 @@ class WebSocketManager {
         this.currentRoom = null;
         console.log('👋 已離開房間');
     }
+
+    // 設定用戶名稱重複的處理函式
+    setOnUsernameDuplicateHandler(handler) {
+        this.onUsernameDuplicate = handler;
+    }
 }
 
 // 全局 WebSocket 管理器實例
 const wsManager = new WebSocketManager(); 
 
 // 暴露到全域 window 對象
-window.wsManager = wsManager; 
+window.wsManager = wsManager;
