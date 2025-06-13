@@ -193,7 +193,6 @@ async function initializeDatabase(connection) {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 room_id VARCHAR(100),
                 user_id VARCHAR(100),
-                user_name VARCHAR(100),
                 message_content TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
@@ -967,42 +966,48 @@ function handleCursorChange(ws, message) {
 
 // 聊天消息處理
 async function handleChatMessage(ws, message) {
-    const userId = ws.userId;
-    if (!users[userId]) return;
-
-    const { roomId, chatMessage, userName } = message;
-    console.log(`💬 ${userName}: ${chatMessage}`);
-
-    // 保存到數據庫
-    if (isDatabaseAvailable) {
-        try {
-            const query = 'INSERT INTO chat_messages (room_id, user_id, user_name, message_content) VALUES (?, ?, ?, ?)';
-            await pool.execute(query, [roomId, userId, userName, chatMessage]);
-        } catch (dbError) {
-            console.error(`❌ 聊天消息[${roomId}]保存到數據庫失敗:`, dbError.message);
-        }
+    const roomId = message.room || ws.currentRoom;
+    if (!roomId || !rooms[roomId]) {
+        console.error(`❌ 房間不存在: ${roomId}`);
+        return;
     }
 
-    // 廣播給房間內的所有人（包括發送者自己）
+    const room = rooms[roomId];
+    const chatMessage = {
+        id: Date.now() + Math.random(), // 使用時間戳和隨機數生成唯一ID
+        userId: ws.userId,
+        userName: ws.userName,
+        message: message.message,
+        timestamp: Date.now(),
+        isHistory: false
+    };
+
+    // 添加到房間聊天歷史
+    room.chatHistory = room.chatHistory || [];
+    room.chatHistory.push(chatMessage);
+    
+    if (isDatabaseAvailable) {
+        // 數據庫模式：保存到數據庫
+        try {
+            await pool.execute(
+                'INSERT INTO chat_messages (room_id, user_id, message_content) VALUES (?, ?, ?)',
+                [roomId, ws.userId, message.message]
+            );
+            console.log(`💬 聊天消息已保存到數據庫: 房間 ${roomId}, 用戶 ${ws.userName}`);
+        } catch (error) {
+            console.error(`❌ 保存聊天消息到數據庫失敗:`, error.message);
+        }
+    } else {
+        // 本地模式：保存到文件
+        saveDataToFile();
+    }
+    
+    console.log(`💬 ${ws.userName}: ${message.message}`);
+    
+    // 廣播聊天消息
     broadcastToRoom(roomId, {
         type: 'chat_message',
-        userName: userName,
-        message: chatMessage,
-        isTeacher: false
-    });
-
-    // 🛠️ 新增：同時將學生的聊天訊息轉發給正在監控此房間的教師
-    teacherMonitors.forEach(teacherWs => {
-        if (teacherWs.readyState === WebSocket.OPEN && teacherWs.monitorRoomId === roomId) {
-            teacherWs.send(JSON.stringify({
-                type: 'chat_message',
-                userName: userName,
-                message: chatMessage,
-                isTeacher: false,
-                roomId: roomId // 讓教師端知道是哪個房間的消息
-            }));
-            console.log(`👨‍🏫 已將 ${userName} 的消息轉發給監控中的教師`);
-        }
+        ...chatMessage
     });
 }
 
@@ -1118,6 +1123,11 @@ function handleTeacherBroadcast(ws, message) {
 function handleTeacherChat(ws, message) {
     if (!teacherMonitors.has(ws.userId)) {
         console.log(`❌ 非教師用戶嘗試發送教師聊天: ${ws.userId}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '權限不足',
+            message: '只有教師可以發送教師消息'
+        }));
         return;
     }
     
@@ -1132,19 +1142,29 @@ function handleTeacherChat(ws, message) {
         userName: teacherName || '教師',
         message: chatMessage,
         timestamp: Date.now(),
-        isTeacher: true
+        isTeacher: true,
+        roomName: targetRoom === 'all' ? '所有房間' : targetRoom
     };
     
     if (targetRoom === 'all') {
         // 廣播到所有房間
-        Object.values(rooms).forEach(room => {
+        Object.keys(rooms).forEach(roomId => {
+            const room = rooms[roomId];
+            if (!room.chatHistory) {
+                room.chatHistory = [];
+            }
+            
             // 添加到房間聊天歷史
-            room.chatHistory.push(teacherChatMessage);
+            room.chatHistory.push({
+                ...teacherChatMessage,
+                roomName: roomId
+            });
             
             // 廣播給房間內的所有用戶
-            broadcastToRoom(room.id, {
+            broadcastToRoom(roomId, {
                 type: 'chat_message',
-                ...teacherChatMessage
+                ...teacherChatMessage,
+                roomName: roomId
             });
         });
         
@@ -1155,17 +1175,20 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: '所有房間'
+                        ...teacherChatMessage
                     }));
                 }
             }
         });
         
         console.log(`📢 教師消息已廣播到所有房間`);
-    } else if (targetRoom && rooms[targetRoom]) {
+    } else if (rooms[targetRoom]) {
         // 發送到特定房間
         const room = rooms[targetRoom];
+        if (!room.chatHistory) {
+            room.chatHistory = [];
+        }
+        
         room.chatHistory.push(teacherChatMessage);
         
         broadcastToRoom(targetRoom, {
@@ -1180,8 +1203,7 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: targetRoom
+                        ...teacherChatMessage
                     }));
                 }
             }
@@ -1190,6 +1212,11 @@ function handleTeacherChat(ws, message) {
         console.log(`💬 教師消息已發送到房間 ${targetRoom}`);
     } else {
         console.log(`❌ 目標房間不存在: ${targetRoom}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '房間不存在',
+            message: `房間 "${targetRoom}" 不存在`
+        }));
     }
 }
 

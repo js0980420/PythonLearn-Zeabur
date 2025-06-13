@@ -276,7 +276,8 @@ class ConflictResolverManager {
             remoteCode: remoteCode || '',
             remoteUserName: remoteUserName || '其他同學',
             localVersion: localVersion || 0,
-            remoteVersion: remoteVersion || 0
+            remoteVersion: remoteVersion || 0,
+            isSender: true // 新增：標記為主改方
         };
         
         // 🔧 同時設置 currentConflict (向後兼容)
@@ -287,6 +288,7 @@ class ConflictResolverManager {
             serverVersion: remoteVersion || 0,
             conflictUser: remoteUserName || '其他同學',
             roomId: wsManager?.currentRoom || 'unknown',
+            isSender: true, // 新增：標記為主改方
             // 兼容舊格式
             code: remoteCode || '',
             userName: remoteUserName,
@@ -336,35 +338,21 @@ class ConflictResolverManager {
             alert(`協作衝突！${remoteUserName || '其他同學'}也在修改程式碼。請檢查差異後決定如何處理。`);
             return;
         }
-
-        try {
-            // 嘗試獲取現有實例，如果沒有則創建新的
-            this.modal = bootstrap.Modal.getInstance(this.modalElement);
-            if (!this.modal) {
-                console.log('🔧 創建新的 Bootstrap Modal 實例');
-                this.modal = new bootstrap.Modal(this.modalElement, { backdrop: 'static' });
-            }
-
-            if (this.modal && typeof this.modal.show === 'function') {
-                console.log('✅ 顯示衝突模態框...');
-                this.modal.show();
-                console.log('✅ 衝突模態框已顯示 V5');
-            } else {
-                console.error('❌ Modal instance 無效');
-                this.modalElement.style.display = 'block';
-                this.modalElement.classList.add('show');
-                document.body.classList.add('modal-open');
-            }
-        } catch (error) {
-            console.error('❌ 顯示模態框時出錯:', error);
-            if(this.modalElement) {
-                this.modalElement.style.display = 'block'; 
-                this.modalElement.classList.add('show');
-                document.body.classList.add('modal-open');
-            }
-        }
         
-        this.showEditorWarning();
+        // 更新模態框按鈕文字
+        const acceptBtn = document.getElementById('acceptChangesBtn');
+        const rejectBtn = document.getElementById('rejectChangesBtn');
+        const discussBtn = document.getElementById('discussChangesBtn');
+        
+        if (acceptBtn) acceptBtn.textContent = '接受我的修改';
+        if (rejectBtn) rejectBtn.textContent = '接受對方修改';
+        if (discussBtn) discussBtn.textContent = '在聊天室討論';
+        
+        // 顯示模態框
+        const modal = new bootstrap.Modal(this.modalElement);
+        modal.show();
+        
+        console.log('✅ 衝突模態框已顯示（主改方模式）');
     }
     
     // 更新模態框內容
@@ -461,15 +449,21 @@ class ConflictResolverManager {
         // 根據用戶選擇設置解決方案
         switch (choice) {
             case 'accept':
-            // 接受對方修改
-            Editor.applyRemoteCode(conflictData.serverCode, conflictData.serverVersion);
-            console.log('✅ 選擇接受對方修改解決衝突');
-            resolution = 'accepted';
+                // 接受自己的修改
+                console.log('✅ 選擇接受自己的修改解決衝突');
+                resolution = 'accepted_own';
+                // 發送自己的代碼到服務器
+                if (window.Editor) {
+                    window.Editor.sendCodeChange(true);
+                }
                 break;
             case 'reject':
-            // 拒絕對方修改，保持自己的版本
-            console.log('✅ 選擇拒絕對方修改解決衝突');
-            resolution = 'rejected';
+                // 接受對方修改
+                if (window.Editor && conflictData.serverCode) {
+                    window.Editor.applyRemoteCode(conflictData.serverCode, conflictData.serverVersion);
+                }
+                console.log('✅ 選擇接受對方修改解決衝突');
+                resolution = 'accepted_other';
                 break;
             case 'discuss':
                 console.log('✅ 選擇討論解決衝突');
@@ -477,29 +471,21 @@ class ConflictResolverManager {
                 // 打開聊天室進行討論
                 this.openChatForDiscussion();
                 break;
-            case 'force':
-                console.log('✅ 選擇強制覆蓋解決衝突');
-                resolution = 'forced';
-                // 強制使用自己的代碼（保持當前狀態）
-                console.log('💪 保持本地代碼，強制覆蓋遠程修改');
-                break;
-            case 'reload':
-                console.log('✅ 選擇重新載入解決衝突');
-                resolution = 'reloaded';
-                // 重新載入頁面
-                location.reload();
-                break;
+            case 'ai_analysis':
+                console.log('✅ 請求AI協助分析衝突');
+                this.requestAIAnalysis();
+                return; // 不關閉模態框，等待AI分析結果
             default:
                 console.warn('⚠️ 未知的衝突解決選項:', choice);
                 resolution = 'unknown';
                 break;
         }
         
-        // 🆕 記錄衝突歷史
+        // 記錄衝突歷史
         try {
-        if (this.lastAIAnalysis) {
+            if (this.lastAIAnalysis) {
                 this.addConflictRecord(conflictData, resolution, this.lastAIAnalysis);
-        } else {
+            } else {
                 this.addConflictRecord(conflictData, resolution);
             }
         } catch (error) {
@@ -513,19 +499,13 @@ class ConflictResolverManager {
         let message;
         switch (choice) {
             case 'accept':
-                message = '已接受對方修改';
+                message = '已接受自己的修改';
                 break;
             case 'reject':
-                message = '已拒絕對方修改，保持我的版本';
+                message = '已接受對方修改';
                 break;
             case 'discuss':
                 message = '已選擇討論解決衝突';
-                break;
-            case 'force':
-                message = '已強制保持本地代碼';
-                break;
-            case 'reload':
-                message = '正在重新載入頁面';
                 break;
             default:
                 message = '衝突處理完成';
@@ -541,7 +521,9 @@ class ConflictResolverManager {
         // 清理衝突狀態
         this.currentConflict = null;
         this.lastAIAnalysis = null;
-        Editor.resetEditingState();
+        if (window.Editor) {
+            window.Editor.resetEditingState();
+        }
     }
 
     // 🎯 AI分析回應處理
@@ -779,11 +761,11 @@ class ConflictResolverManager {
         }
     }
 
-    // 🆕 顯示主改方的等待界面 - 新增代碼差異對比
+    // 🆕 顯示主改方的等待界面 - 增強版
     showSenderWaitingModal(conflictData) {
         console.log('⏳ [ConflictResolver] 顯示主改方等待界面:', conflictData);
         
-        // 創建等待模態框（如果不存在）
+        // 創建或獲取等待模態框
         let waitingModal = document.getElementById('senderWaitingModal');
         if (!waitingModal) {
             this.createSenderWaitingModal();
@@ -791,74 +773,154 @@ class ConflictResolverManager {
         }
         
         // 更新等待信息
-        const conflictUser = document.getElementById('waitingConflictUser');
         const waitingMessage = document.getElementById('waitingMessage');
-        
-        if (conflictUser) {
-            conflictUser.textContent = conflictData.conflictWith || '其他同學';
-        }
-        
         if (waitingMessage) {
+            const diffAnalysis = conflictData.conflictDetails?.diffAnalysis || {};
             waitingMessage.innerHTML = `
                 <div class="alert alert-info">
-                    <i class="fas fa-hourglass-half text-warning"></i> 
-                    <strong>${conflictData.conflictWith}</strong> 正在處理與您的代碼修改衝突...
+                    <h5 class="alert-heading">
+                        <i class="fas fa-hourglass-half text-warning"></i> 
+                        協作衝突處理中
+                    </h5>
+                    <p><strong>${conflictData.conflictWith}</strong> 正在處理與您的代碼修改衝突</p>
+                    <hr>
+                    <div class="small">
+                        <p class="mb-1">📊 變更分析：</p>
+                        <ul class="list-unstyled">
+                            <li>• 變更類型：${diffAnalysis.changeType?.description || '未知'}</li>
+                            <li>• 變更摘要：${diffAnalysis.summary || '無法分析'}</li>
+                            <li>• 時間差：${Math.round((conflictData.conflictDetails?.timeDiff || 0)/1000)}秒</li>
+                        </ul>
+                    </div>
                 </div>
             `;
         }
         
-        // 🆕 在主改方界面也顯示代碼差異對比
-        this.displayCodeDifferenceInWaiting(
-            conflictData.localCode || '', 
-            conflictData.remoteCode || '', 
-            conflictData.conflictWith || '其他同學'
+        // 在主改方界面顯示代碼差異對比
+        this.displayDetailedDiffInWaiting(
+            conflictData.localCode || '',
+            conflictData.remoteCode || '',
+            conflictData.conflictWith || '其他同學',
+            conflictData.conflictDetails?.diffAnalysis
         );
         
         // 顯示模態框
         const modal = new bootstrap.Modal(waitingModal);
         modal.show();
         
-        console.log('✅ 主改方等待界面已顯示（包含代碼差異）');
+        console.log('✅ 主改方等待界面已顯示（含詳細分析）');
     }
 
-    // 🆕 在等待界面中顯示代碼差異
-    displayCodeDifferenceInWaiting(myCode, otherCode, otherUserName) {
+    // 在等待界面中顯示詳細的代碼差異
+    displayDetailedDiffInWaiting(myCode, otherCode, otherUserName, diffAnalysis) {
         const myCodeElement = document.getElementById('waitingMyCodeVersion');
         const otherCodeElement = document.getElementById('waitingOtherCodeVersion');
-        const otherNameElement = document.getElementById('waitingOtherUserName');
         const diffSummaryElement = document.getElementById('waitingDiffSummary');
         
+        // 顯示代碼
         if (myCodeElement) {
-            myCodeElement.textContent = myCode || '(空白)';
+            myCodeElement.innerHTML = this.highlightCode(myCode, diffAnalysis?.changes, 'local');
         }
         
         if (otherCodeElement) {
-            otherCodeElement.textContent = otherCode || '(空白)';
+            otherCodeElement.innerHTML = this.highlightCode(otherCode, diffAnalysis?.changes, 'remote');
         }
         
-        if (otherNameElement) {
-            otherNameElement.textContent = otherUserName;
+        // 顯示詳細的差異摘要
+        if (diffSummaryElement) {
+            const changes = diffAnalysis?.changes || {};
+            let summaryHTML = `
+                <div class="p-2">
+                    <h6 class="mb-2"><i class="fas fa-info-circle"></i> 代碼差異分析</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <div class="p-2 border rounded bg-light">
+                                <small class="text-muted d-block mb-1">變更類型：</small>
+                                <span class="badge bg-${this.getChangeTypeBadgeColor(diffAnalysis?.changeType?.type)}">
+                                    ${diffAnalysis?.changeType?.description || '未知'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="p-2 border rounded bg-light">
+                                <small class="text-muted d-block mb-1">變更統計：</small>
+                                <span class="badge bg-success me-1">+${changes.added?.length || 0} 新增</span>
+                                <span class="badge bg-danger me-1">-${changes.removed?.length || 0} 刪除</span>
+                                <span class="badge bg-warning me-1">~${changes.modified?.length || 0} 修改</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            diffSummaryElement.innerHTML = summaryHTML;
         }
+    }
+
+    // 代碼高亮顯示
+    highlightCode(code, changes, type) {
+        if (!code) return '<em class="text-muted">(空白)</em>';
         
-        // 執行差異分析
-        try {
-        const analysis = this.performLocalDiffAnalysis(myCode, otherCode);
+        const lines = code.split('\n');
+        let html = '<div class="code-container">';
         
-            if (diffSummaryElement && analysis) {
-                // 使用正確的屬性名稱
-                const summaryText = `差異: +${analysis.addedLines || 0} 新增, -${analysis.removedLines || 0} 刪除, ~${analysis.modifiedLines || 0} 修改`;
-            diffSummaryElement.textContent = summaryText;
-            } else if (diffSummaryElement) {
-                diffSummaryElement.textContent = '差異分析失敗';
+        lines.forEach((line, index) => {
+            const lineNumber = index + 1;
+            let lineClass = '';
+            let lineContent = this.escapeHtml(line);
+            
+            if (changes) {
+                if (type === 'local') {
+                    // 本地代碼高亮
+                    if (changes.removed.some(c => c.line === lineNumber)) {
+                        lineClass = 'bg-danger bg-opacity-10';
+                        lineContent = `<del>${lineContent}</del>`;
+                    } else if (changes.modified.some(c => c.line === lineNumber)) {
+                        lineClass = 'bg-warning bg-opacity-10';
+                    }
+                } else {
+                    // 遠程代碼高亮
+                    if (changes.added.some(c => c.line === lineNumber)) {
+                        lineClass = 'bg-success bg-opacity-10';
+                        lineContent = `<ins>${lineContent}</ins>`;
+                    } else if (changes.modified.some(c => c.line === lineNumber)) {
+                        lineClass = 'bg-warning bg-opacity-10';
+                    }
+                }
             }
-        } catch (error) {
-            console.error('❌ 差異分析失敗:', error);
-            if (diffSummaryElement) {
-                diffSummaryElement.textContent = '差異分析錯誤';
-            }
-        }
+            
+            html += `
+                <div class="code-line ${lineClass}">
+                    <span class="line-number text-muted small">${lineNumber}</span>
+                    <span class="line-content">${lineContent || '&nbsp;'}</span>
+                </div>
+            `;
+        });
         
-        console.log('✅ 主改方等待界面的代碼差異顯示完成');
+        html += '</div>';
+        return html;
+    }
+
+    // HTML 轉義
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 根據變更類型獲取對應的 Bootstrap 顏色
+    getChangeTypeBadgeColor(type) {
+        switch (type) {
+            case 'addition':
+                return 'success';
+            case 'deletion':
+                return 'danger';
+            case 'modification':
+                return 'warning';
+            case 'mixed':
+                return 'info';
+            default:
+                return 'secondary';
+        }
     }
 
     // 🆕 創建主改方等待模態框 - 新增代碼差異對比區域
