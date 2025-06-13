@@ -36,50 +36,49 @@ class WebSocketManager {
         } else {
             // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            wsUrl = `${protocol}//${window.location.host}`;
+            wsUrl = `wss://${window.location.host}`;
         }
         
         console.log(`🔌 嘗試連接到 WebSocket: ${wsUrl}`);
         console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
         
         try {
-        this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(wsUrl);
 
-        this.ws.onopen = () => {
-            console.log('✅ WebSocket 連接成功到服務器!');
-            console.log(`📍 連接地址: ${wsUrl}`);
-            this.reconnectAttempts = 0;
+            this.ws.onopen = () => {
+                console.log('✅ WebSocket 連接成功到服務器!');
+                console.log(`📍 連接地址: ${wsUrl}`);
+                this.reconnectAttempts = 0;
                 
                 // 啟動心跳
                 this.startHeartbeat();
                 
                 // 發送加入房間請求
-            this.sendMessage({
-                type: 'join_room',
+                this.sendMessage({
+                    type: 'join_room',
                     room: roomName,
                     userName: userName
-            });
+                });
 
                 // 處理消息隊列
-            this.processMessageQueue();
+                this.processMessageQueue();
                 
                 // 觸發連接成功事件
                 if (window.onWebSocketConnected) {
                     window.onWebSocketConnected();
                 }
-        };
+            };
 
-        this.ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                this.handleMessage(message);
-            } catch (error) {
+            this.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    this.handleMessage(message);
+                } catch (error) {
                     console.error('❌ 解析消息失敗:', error, event.data);
-            }
-        };
+                }
+            };
 
-        this.ws.onclose = (event) => {
+            this.ws.onclose = (event) => {
                 console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
                 this.stopHeartbeat();
                 
