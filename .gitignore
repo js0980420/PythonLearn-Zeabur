@@ -65,8 +65,9 @@ data/
 coverage/
 .nyc_output/
 
-# 配置文件
+# 配置文件（但允許 src/config）
 config/
+!src/config/
 
 # 環境變數
 .env.*.local 
