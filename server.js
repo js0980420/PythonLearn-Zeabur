@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const mysql = require('mysql2/promise'); // 引入 mysql2/promise 用於異步操作
 
-const aiAssistant = require('./services/ai_assistant');
+const aiAssistant = require('./src/services/ai_assistant');
 
 // 環境變數配置
 const PORT = process.env.PORT || 3000;
