@@ -979,7 +979,8 @@ async function handleChatMessage(ws, message) {
         userName: ws.userName,
         message: message.message,
         timestamp: Date.now(),
-        isHistory: false
+        isHistory: false,
+        roomName: roomId // 添加房間名稱
     };
 
     // 添加到房間聊天歷史
@@ -1002,12 +1003,24 @@ async function handleChatMessage(ws, message) {
         saveDataToFile();
     }
     
-    console.log(`💬 ${ws.userName}: ${message.message}`);
+    console.log(`💬 ${ws.userName}: ${message.message} (房間: ${roomId})`);
     
-    // 廣播聊天消息
+    // 廣播聊天消息給房間內的所有用戶
     broadcastToRoom(roomId, {
         type: 'chat_message',
         ...chatMessage
+    });
+
+    // 廣播給所有教師監控
+    teacherMonitors.forEach(teacherId => {
+        const teacher = users[teacherId];
+        if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
+            teacher.ws.send(JSON.stringify({
+                type: 'chat_message',
+                ...chatMessage
+            }));
+            console.log(`📢 已轉發學生消息給教師 ${teacherId}`);
+        }
     });
 }
 
