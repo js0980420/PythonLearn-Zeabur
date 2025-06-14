@@ -35,7 +35,7 @@ const wss = new WebSocket.Server({
 const PUBLIC_URL = process.env.PUBLIC_URL || 
                    process.env.VERCEL_URL || 
                    process.env.ZEABUR_URL ||
-                   'http://localhost:8080'; // Zeabur 標準端口
+                   'http://localhost:8080'; // 默認本地開發
 
 const WEBSOCKET_URL = PUBLIC_URL ? PUBLIC_URL.replace('https://', 'wss://').replace('http://', 'ws://') : '';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -95,28 +95,23 @@ async function initializeDatabase(connection) {
                 current_code_content TEXT,
                 current_code_version INT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_last_activity (last_activity)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ 房間表創建成功');
 
         // 2. 創建用戶表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS users (
-                id VARCHAR(100) PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                room_id VARCHAR(100),
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_room_id (room_id),
-                INDEX idx_username (username),
-                INDEX idx_last_activity (last_activity)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ 用戶表創建成功');
 
-        // 3. 創建用戶名稱使用記錄表
+        // 3. 創建用戶名稱使用記錄表（無外鍵約束，避免複雜依賴）
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS user_names (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -126,187 +121,113 @@ async function initializeDatabase(connection) {
                 used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY unique_user_room (user_id, room_id),
                 INDEX idx_user_name (user_name),
-                INDEX idx_room_id (room_id),
-                INDEX idx_used_at (used_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                INDEX idx_room_id (room_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ 用戶名稱記錄表創建成功');
 
-        // 4. 創建代碼歷史表
+        // 4. 創建代碼歷史表（可選外鍵約束）
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS code_history (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                user_name VARCHAR(100) NOT NULL,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                user_name VARCHAR(100),
                 code_content TEXT,
-                version INT NOT NULL,
+                version INT,
                 save_name VARCHAR(100),
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
                 INDEX idx_user_id (user_id),
                 INDEX idx_user_name (user_name),
-                INDEX idx_timestamp (timestamp),
-                INDEX idx_version (version)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                INDEX idx_timestamp (timestamp)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ 代碼歷史表創建成功');
 
-        // 5. 創建聊天消息表
+        // 確保code_history表有所需的新字段（升級現有表）
+        try {
+            await connection.execute(`
+                ALTER TABLE code_history 
+                ADD COLUMN IF NOT EXISTS user_name VARCHAR(100),
+                ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ADD INDEX IF NOT EXISTS idx_user_name (user_name),
+                ADD INDEX IF NOT EXISTS idx_timestamp (timestamp)
+            `);
+            console.log('✅ 代碼歷史表字段升級成功');
+        } catch (alterError) {
+            // MySQL可能不支持IF NOT EXISTS語法，嘗試單獨添加
+            try {
+                await connection.execute(`ALTER TABLE code_history ADD COLUMN user_name VARCHAR(100)`);
+                console.log('✅ 添加user_name字段成功');
+            } catch (e) {
+                // 字段可能已存在，忽略錯誤
+            }
+            
+            try {
+                await connection.execute(`ALTER TABLE code_history ADD COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+                console.log('✅ 添加timestamp字段成功');
+            } catch (e) {
+                // 字段可能已存在，忽略錯誤
+            }
+            
+            try {
+                await connection.execute(`ALTER TABLE code_history ADD INDEX idx_user_name (user_name)`);
+                console.log('✅ 添加user_name索引成功');
+            } catch (e) {
+                // 索引可能已存在，忽略錯誤
+            }
+            
+            try {
+                await connection.execute(`ALTER TABLE code_history ADD INDEX idx_timestamp (timestamp)`);
+                console.log('✅ 添加timestamp索引成功');
+            } catch (e) {
+                // 索引可能已存在，忽略錯誤
+            }
+        }
+
+        // 5. 創建聊天消息表（可選外鍵約束）
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                user_name VARCHAR(100) NOT NULL,
-                message_content TEXT NOT NULL,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                message_content TEXT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id),
-                INDEX idx_timestamp (timestamp)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                INDEX idx_user_id (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ 聊天消息表創建成功');
 
-        // 6. 創建 AI 請求記錄表
+        // 6. 創建AI請求記錄表（可選外鍵約束）
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ai_requests (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(100) NOT NULL,
-                room_id VARCHAR(100) NOT NULL,
-                request_type VARCHAR(50) NOT NULL,
-                request_content TEXT NOT NULL,
-                response_content TEXT,
+                room_id VARCHAR(100),
+                user_id VARCHAR(100),
+                request_type VARCHAR(50),
+                code_content TEXT,
+                ai_response TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                INDEX idx_user_id (user_id),
                 INDEX idx_room_id (room_id),
-                INDEX idx_status (status),
-                INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                INDEX idx_user_id (user_id),
+                INDEX idx_request_type (request_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `);
         console.log('✅ AI請求記錄表創建成功');
 
-        // 7. 創建代碼執行記錄表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS code_executions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                code_content TEXT NOT NULL,
-                execution_result TEXT,
-                execution_error TEXT,
-                execution_time FLOAT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id),
-                INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ 代碼執行記錄表創建成功');
-
-        // 8. 創建學習統計表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS learning_statistics (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id VARCHAR(100) NOT NULL,
-                room_id VARCHAR(100) NOT NULL,
-                code_lines INT DEFAULT 0,
-                execution_count INT DEFAULT 0,
-                error_count INT DEFAULT 0,
-                time_spent INT DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_user_id (user_id),
-                INDEX idx_room_id (room_id),
-                INDEX idx_last_updated (last_updated)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ 學習統計表創建成功');
-
-        // 9. 創建房間代碼快照表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS room_code_snapshots (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                code_content TEXT NOT NULL,
-                version INT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_by VARCHAR(100) NOT NULL,
-                snapshot_type VARCHAR(20) DEFAULT 'auto',
-                INDEX idx_room_id (room_id),
-                INDEX idx_version (version),
-                INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ 房間代碼快照表創建成功');
-
-        // 10. 創建房間參與者表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS room_participants (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                user_name VARCHAR(100) NOT NULL,
-                join_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY unique_room_user (room_id, user_id),
-                INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id),
-                INDEX idx_last_active (last_active)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ 房間參與者表創建成功');
-
-        // 11. 創建 AI 輔助記錄表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS ai_assistance (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                assistance_type VARCHAR(50) NOT NULL,
-                code_before TEXT,
-                code_after TEXT,
-                ai_suggestions TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id),
-                INDEX idx_assistance_type (assistance_type),
-                INDEX idx_created_at (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ AI輔助記錄表創建成功');
-
-        // 12. 創建代碼變更表
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS code_changes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100) NOT NULL,
-                user_id VARCHAR(100) NOT NULL,
-                change_type VARCHAR(20) NOT NULL,
-                content TEXT,
-                position JSON,
-                version INT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id),
-                INDEX idx_version (version),
-                INDEX idx_timestamp (timestamp)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        `);
-        console.log('✅ 代碼變更表創建成功');
-
         console.log('✅ 數據庫表初始化完成 - 所有表創建成功');
-
-        // 獲取所有表名
-        const [tables] = await connection.execute(`SHOW TABLES`);
-        const tableNames = tables.map(table => Object.values(table)[0]);
-        console.log(`📊 當前數據庫包含 ${tableNames.length} 個表: ${tableNames.join(', ')}`);
-
+        
+        // 檢查表狀態
+        const [tables] = await connection.execute('SHOW TABLES');
+        console.log(`📊 當前數據庫包含 ${tables.length} 個表:`, tables.map(t => Object.values(t)[0]).join(', '));
+        
     } catch (error) {
         console.error('❌ 數據庫表初始化失敗:', error.message);
-        throw error;
+        console.log('🔄 將使用本地存儲模式繼續運行');
+        // 不再拋出錯誤，允許服務器繼續以本地模式運行
     }
 }
 
@@ -859,7 +780,7 @@ async function handleJoinRoom(ws, message) {
     
     console.log(`🚀 用戶 ${userName} 嘗試加入房間 ${roomId}`);
 
-    // 創建房間（如果不存在）
+    // 檢查房間是否存在，如果不存在則創建
     if (!rooms[roomId]) {
         const newRoom = await createRoom(roomId);
         rooms[roomId] = newRoom;
@@ -870,22 +791,32 @@ async function handleJoinRoom(ws, message) {
     
     // 確保 room 對象及其 users 屬性存在
     if (!room || !room.users) {
-        console.error(`❌ 嚴重錯誤：無法獲取或初始化房間 ${roomId} 的用戶列表。`);
         ws.send(JSON.stringify({
-                type: 'join_room_error',
-            error: 'room_initialization_failed',
-            message: `無法初始化房間 ${roomId}，請稍後再試。`
-            }));
-            return;
-        }
-
-    // 清理房間內無效的用戶連接
-    const invalidUserIds = [];
-    Object.entries(room.users).forEach(([userId, user]) => {
-        if (!user.ws || user.ws.readyState !== WebSocket.OPEN) {
-            invalidUserIds.push(userId);
+            type: 'join_room_error',
+            error: 'room_error',
+            message: '房間初始化失敗'
+        }));
+        return;
     }
-    });
+
+    // 檢查用戶名是否已存在於該房間
+    const isUserNameTaken = Object.values(room.users).some(user => 
+        user.userName === userName && user.ws.readyState === WebSocket.OPEN
+    );
+
+    if (isUserNameTaken) {
+        ws.send(JSON.stringify({
+            type: 'join_room_error',
+            error: 'name_duplicate',
+            message: '此用戶名稱在房間中已被使用，請使用其他名稱'
+        }));
+        return;
+    }
+
+    // 清理房間中的無效連接
+    const invalidUserIds = Object.keys(room.users).filter(userId => 
+        !room.users[userId].ws || room.users[userId].ws.readyState !== WebSocket.OPEN
+    );
     
     invalidUserIds.forEach(userId => {
         delete room.users[userId];
@@ -896,103 +827,119 @@ async function handleJoinRoom(ws, message) {
     const existingUserInRoom = room.users[ws.userId];
     const isReconnect = existingUserInRoom && existingUserInRoom.userName === userName;
 
-    // 更新用戶信息
-    ws.currentRoom = roomId;
-    ws.userName = userName;
-    
-    // 更新全域用戶信息
-    if (users[ws.userId]) {
-        users[ws.userId].roomId = roomId;
-        users[ws.userId].name = userName;
-        console.log(`📝 更新全域用戶信息: ${ws.userId} -> 房間: ${roomId}, 名稱: ${userName}`);
-    } else {
-        console.warn(`⚠️ 警告：在全域用戶列表中找不到用戶 ${ws.userId}`);
+    try {
+        // 更新用戶信息
+        ws.currentRoom = roomId;
+        ws.userName = userName;
+        
+        // 更新全域用戶信息
+        if (users[ws.userId]) {
+            users[ws.userId].roomId = roomId;
+            users[ws.userId].name = userName;
+            console.log(`📝 更新全域用戶信息: ${ws.userId} -> 房間: ${roomId}, 名稱: ${userName}`);
+        }
+        
+        // 添加用戶到房間
+        room.users[ws.userId] = {
+            userId: ws.userId,
+            userName: userName,
+            ws: ws,
+            joinTime: new Date(),
+            isActive: true,
+            cursor: null
+        };
+
+        // 獲取當前有效用戶列表
+        const activeUsers = Object.values(room.users)
+            .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+            .map(u => ({
+                userId: u.userId,
+                userName: u.userName,
+                isActive: u.isActive
+            }));
+
+        // 發送加入成功消息給當前用戶
+        ws.send(JSON.stringify({
+            type: 'room_joined',
+            roomId: roomId,
+            userName: userName,
+            userId: ws.userId,
+            code: room.code || '',
+            version: room.version || 0,
+            users: activeUsers,
+            chatHistory: room.chatHistory || [],
+            isReconnect: isReconnect
+        }));
+        
+        // 廣播用戶加入消息給房間內其他用戶
+        broadcastToRoom(roomId, {
+            type: isReconnect ? 'user_reconnected' : 'user_joined',
+            userName: userName,
+            userId: ws.userId,
+            users: activeUsers
+        }, ws.userId);
+        
+        console.log(`✅ ${userName} 成功加入房間 ${roomId}，當前在線用戶: ${activeUsers.length} 人`);
+    } catch (error) {
+        console.error(`❌ 加入房間時發生錯誤:`, error);
+        // 發生錯誤時，清理已添加的用戶信息
+        if (room.users[ws.userId]) {
+            delete room.users[ws.userId];
+        }
+        ws.currentRoom = null;
+        ws.userName = null;
+        
+        ws.send(JSON.stringify({
+            type: 'join_room_error',
+            error: 'server_error',
+            message: '加入房間時發生錯誤，請稍後重試'
+        }));
     }
-    
-    // 添加用戶到房間
-    room.users[ws.userId] = {
-        userId: ws.userId,
-        userName: userName,
-        ws: ws,
-        joinTime: new Date(),
-        isActive: true,
-        cursor: null // 初始化游標位置
-    };
-
-    console.log(`👤 ${userName} ${isReconnect ? '重連到' : '加入'} 房間: ${roomId}`);
-    console.log(`📊 房間 ${roomId} 現有用戶數: ${Object.keys(room.users).length}`);
-    
-    // 獲取當前有效用戶列表
-    const activeUsers = Object.values(room.users).filter(u => 
-        u.ws && u.ws.readyState === WebSocket.OPEN
-    ).map(u => ({
-        userId: u.userId,
-        userName: u.userName,
-        isActive: u.isActive
-    }));
-
-    // 發送加入成功消息給當前用戶
-    ws.send(JSON.stringify({
-        type: 'room_joined',
-        roomId: roomId,
-        userName: userName,
-        userId: ws.userId,
-        code: room.code || '',
-        version: room.version || 0,
-        users: activeUsers,
-        chatHistory: room.chatHistory || [],
-        isReconnect: isReconnect
-    }));
-    
-    // 廣播用戶加入消息給房間內其他用戶
-    const joinMessage = {
-        type: isReconnect ? 'user_reconnected' : 'user_joined',
-        userName: userName,
-        userId: ws.userId,
-        users: activeUsers
-    };
-
-    broadcastToRoom(roomId, joinMessage, ws.userId);
-    
-    console.log(`✅ ${userName} 成功加入房間 ${roomId}，當前在線用戶: ${activeUsers.length} 人`);
 }
 
 // 離開房間處理
 function handleLeaveRoom(ws, message) {
-    const roomId = message.room || ws.currentRoom;
+    const roomId = ws.currentRoom;
+    const userName = ws.userName;
+    
     if (!roomId || !rooms[roomId]) {
-        console.error(`❌ 房間不存在: ${roomId}`);
+        console.warn(`⚠️ 用戶嘗試離開不存在的房間: ${roomId}`);
         return;
     }
     
     const room = rooms[roomId];
-    const userName = ws.userName;
+    
+    // 從房間中移除用戶
+    if (room.users[ws.userId]) {
+        delete room.users[ws.userId];
+        console.log(`👋 用戶 ${userName} 離開房間 ${roomId}`);
         
-        // 從房間中移除用戶
-    delete room.users[ws.userId];
+        // 獲取更新後的用戶列表
+        const activeUsers = Object.values(room.users)
+            .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+            .map(u => ({
+                userId: u.userId,
+                userName: u.userName,
+                isActive: u.isActive
+            }));
         
-        // 通知其他用戶有用戶離開，並發送更新後的用戶列表
+        // 廣播用戶離開消息（包含更新後的用戶列表）
         broadcastToRoom(roomId, {
             type: 'user_left',
             userName: userName,
-        userId: ws.userId,
-        timestamp: Date.now()
-    }, ws.userId);
+            users: activeUsers
+        });
         
-        console.log(`👋 ${userName} 離開房間: ${roomId}`);
-        
-    // 如果房間空了，清理房間
-    if (Object.keys(room.users).length === 0) {
-        console.log(`⏰ 房間 ${roomId} 已空，將在 2 分鐘後清理`);
-            setTimeout(() => {
-            if (rooms[roomId]) {
-                delete rooms[roomId];
-                    console.log(`🧹 清理空房間: ${roomId}`);
-                    // 房間被清理時也更新統計
-                    broadcastStatsToTeachers();
-                }
-        }, 120000);
+        // 如果房間空了，清理房間
+        if (Object.keys(room.users).length === 0) {
+            console.log(`🧹 清理空房間: ${roomId}`);
+            delete rooms[roomId];
         }
+    }
+    
+    // 清理用戶的房間信息
+    ws.currentRoom = null;
+    ws.userName = null;
 }
 
 // 游標變更處理
@@ -1176,6 +1123,11 @@ function handleTeacherBroadcast(ws, message) {
 function handleTeacherChat(ws, message) {
     if (!teacherMonitors.has(ws.userId)) {
         console.log(`❌ 非教師用戶嘗試發送教師聊天: ${ws.userId}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '權限不足',
+            message: '只有教師可以發送教師消息'
+        }));
         return;
     }
     
@@ -1190,19 +1142,29 @@ function handleTeacherChat(ws, message) {
         userName: teacherName || '教師',
         message: chatMessage,
         timestamp: Date.now(),
-        isTeacher: true
+        isTeacher: true,
+        roomName: targetRoom === 'all' ? '所有房間' : targetRoom
     };
     
     if (targetRoom === 'all') {
         // 廣播到所有房間
-        Object.values(rooms).forEach(room => {
+        Object.keys(rooms).forEach(roomId => {
+            const room = rooms[roomId];
+            if (!room.chatHistory) {
+                room.chatHistory = [];
+            }
+            
             // 添加到房間聊天歷史
-            room.chatHistory.push(teacherChatMessage);
+            room.chatHistory.push({
+                ...teacherChatMessage,
+                roomName: roomId
+            });
             
             // 廣播給房間內的所有用戶
-            broadcastToRoom(room.id, {
+            broadcastToRoom(roomId, {
                 type: 'chat_message',
-                ...teacherChatMessage
+                ...teacherChatMessage,
+                roomName: roomId
             });
         });
         
@@ -1213,8 +1175,7 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: '所有房間'
+                        ...teacherChatMessage
                     }));
                 }
             }
@@ -1224,8 +1185,13 @@ function handleTeacherChat(ws, message) {
     } else if (targetRoom && rooms[targetRoom]) {
         // 發送到特定房間
         const room = rooms[targetRoom];
+        if (!room.chatHistory) {
+            room.chatHistory = [];
+        }
+        
         room.chatHistory.push(teacherChatMessage);
         
+        // 廣播給房間內的所有用戶
         broadcastToRoom(targetRoom, {
             type: 'chat_message',
             ...teacherChatMessage
@@ -1238,8 +1204,7 @@ function handleTeacherChat(ws, message) {
                 if (teacher && teacher.ws && teacher.ws.readyState === WebSocket.OPEN) {
                     teacher.ws.send(JSON.stringify({
                         type: 'chat_message',
-                        ...teacherChatMessage,
-                        roomName: targetRoom
+                        ...teacherChatMessage
                     }));
                 }
             }
@@ -1248,6 +1213,11 @@ function handleTeacherChat(ws, message) {
         console.log(`💬 教師消息已發送到房間 ${targetRoom}`);
     } else {
         console.log(`❌ 目標房間不存在: ${targetRoom}`);
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '房間不存在',
+            message: `房間 "${targetRoom}" 不存在`
+        }));
     }
 }
 
@@ -2777,11 +2747,27 @@ async function handleLoadCode(ws, message) {
     }
 
     const userName = user.name;
-    const { loadLatest, saveId } = message;
+    const { loadLatest } = message;
 
-    console.log(`📥 ${userName} 請求載入代碼 - 載入最新: ${loadLatest}, 特定ID: ${saveId}`);
+    console.log(`📥 ${userName} 請求載入代碼 - 載入最新: ${loadLatest}`);
 
-    // 🆕 從用戶的個人代碼歷史中載入
+    // 如果請求最新代碼，直接返回房間當前代碼
+    if (loadLatest) {
+        ws.send(JSON.stringify({
+            type: 'code_change',
+            code: room.code || '',
+            version: room.version || 0,
+            userName: 'system',
+            userId: 'system',
+            timestamp: Date.now(),
+            roomId: user.roomId,
+            forceUpdate: true
+        }));
+        console.log(`✅ 已發送最新代碼給 ${userName}`);
+        return;
+    }
+
+    // 否則從用戶的個人代碼歷史中載入
     if (!room.userCodeHistory || !room.userCodeHistory[userName] || room.userCodeHistory[userName].length === 0) {
         ws.send(JSON.stringify({
             type: 'load_code_error',
@@ -2794,43 +2780,36 @@ async function handleLoadCode(ws, message) {
     const userHistory = room.userCodeHistory[userName];
     let codeToLoad = null;
 
-    if (loadLatest) {
-        // 載入最新的代碼（第一個元素）
-        codeToLoad = userHistory[0];
-        console.log(`🔄 ${userName} 載入最新代碼記錄 (版本 ${codeToLoad.version})`);
-    } else if (saveId) {
-        // 載入特定ID的代碼
-        codeToLoad = userHistory.find(item => item.id === saveId);
-        if (!codeToLoad) {
-            ws.send(JSON.stringify({
-                type: 'load_code_error',
-                error: '找不到指定的代碼記錄',
-                message: '該代碼記錄可能已被刪除或不存在'
-            }));
-            return;
-        }
-        console.log(`🔄 ${userName} 載入特定代碼記錄: ${saveId} (版本 ${codeToLoad.version})`);
+    // 根據請求類型選擇要載入的代碼
+    if (message.saveId) {
+        codeToLoad = userHistory.find(h => h.id === message.saveId);
     } else {
+        codeToLoad = userHistory[userHistory.length - 1]; // 最新保存的代碼
+    }
+
+    if (!codeToLoad) {
         ws.send(JSON.stringify({
             type: 'load_code_error',
-            error: '無效的載入請求',
-            message: '請指定要載入最新代碼或特定代碼ID'
+            error: '找不到指定的代碼記錄'
         }));
         return;
     }
 
-    // 發送載入成功響應
+    // 發送載入成功消息
     ws.send(JSON.stringify({
         type: 'load_code_success',
         code: codeToLoad.code,
-        title: codeToLoad.title,
-        version: codeToLoad.version,
+        saveId: codeToLoad.id,
         timestamp: codeToLoad.timestamp,
-        author: codeToLoad.author,
-        message: `已載入您的代碼 "${codeToLoad.title}" (版本 ${codeToLoad.version})`
+        message: '代碼載入成功'
     }));
 
-    console.log(`✅ ${userName} 成功載入代碼: ${codeToLoad.title} (版本 ${codeToLoad.version})`);
+    // 廣播代碼變更消息給房間內其他用戶
+    broadcastToRoom(user.roomId, {
+        type: 'code_loaded_notification',
+        userName: userName,
+        timestamp: Date.now()
+    }, ws.userId);
 }
 
 // 🆕 處理獲取用戶個人代碼歷史記錄
@@ -3003,42 +2982,37 @@ async function handleSaveCode(ws, message) {
 
 // 處理代碼變更
 function handleCodeChange(ws, message) {
-    const roomId = message.room || ws.currentRoom;
-    if (!roomId || !rooms[roomId]) {
-        console.error(`❌ 房間不存在: ${roomId}`);
+    const user = users[ws.userId];
+    if (!user || !user.roomId) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '用戶未在房間中'
+        }));
         return;
     }
 
-    const room = rooms[roomId];
-    
-    // 檢查是否為強制更新
-    const isForceUpdate = message.forceUpdate === true;
-    
-    // 更新房間代碼和版本
+    const room = rooms[user.roomId];
+    if (!room) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            error: '房間不存在'
+        }));
+        return;
+    }
+
+    // 更新房間代碼
     room.code = message.code;
     room.version = (room.version || 0) + 1;
-    room.lastModified = Date.now();
-    room.lastModifiedBy = ws.userId;
-
-    console.log(`📝 代碼變更 - 房間: ${roomId}, 版本: ${room.version}, 用戶: ${ws.userName}, 強制更新: ${isForceUpdate}`);
-
-    // 廣播消息
-    const broadcastMessage = {
+    
+    // 廣播代碼變更給房間內所有用戶
+    broadcastToRoom(user.roomId, {
         type: 'code_change',
         code: message.code,
         version: room.version,
-        userName: ws.userName,
+        userName: user.name,
         userId: ws.userId,
-        timestamp: Date.now(),
-        roomId: roomId,
-        forceUpdate: isForceUpdate // 傳遞強制更新標記
-    };
-
-    // 廣播給房間內其他用戶
-    broadcastToRoom(roomId, broadcastMessage, ws.userId);
-
-    // 保存數據
-    saveDataToFile();
+        timestamp: Date.now()
+    });
 }
 
 // 🆕 處理衝突通知 - 轉發給目標用戶

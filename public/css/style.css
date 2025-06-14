@@ -1,84 +1,120 @@
-/* 代碼差異顯示樣式 */
-.code-container {
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.9em;
-    line-height: 1.5;
-    background: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.code-line {
+/* 用戶列表樣式 */
+.user-item {
     display: flex;
-    padding: 2px 0;
-    border-bottom: 1px solid #f8f9fa;
-}
-
-.code-line:last-child {
-    border-bottom: none;
-}
-
-.code-line:hover {
+    align-items: center;
+    padding: 5px 10px;
+    margin: 2px 0;
+    border-radius: 4px;
     background-color: #f8f9fa;
 }
 
-.line-number {
-    width: 3em;
-    text-align: right;
-    padding: 0 8px;
-    color: #6c757d;
-    user-select: none;
-    border-right: 1px solid #dee2e6;
+.user-name {
+    flex-grow: 1;
+    margin-right: 10px;
 }
 
-.line-content {
-    padding: 0 8px;
-    white-space: pre;
-    overflow-x: auto;
-    flex: 1;
-}
-
-/* 差異高亮 */
-.code-line del {
-    background-color: #ffd7d7;
-    text-decoration: line-through;
-    color: #dc3545;
-}
-
-.code-line ins {
-    background-color: #d7ffd7;
-    text-decoration: none;
-    color: #198754;
-}
-
-/* 滾動條美化 */
-.code-container::-webkit-scrollbar {
+.user-status {
     width: 8px;
     height: 8px;
+    border-radius: 50%;
 }
 
-.code-container::-webkit-scrollbar-track {
-    background: #f1f1f1;
+.user-status.active {
+    background-color: #28a745;
+}
+
+.user-status.inactive {
+    background-color: #dc3545;
+}
+
+/* 輸入框錯誤狀態樣式 */
+.input-error {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+.input-error:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* 在線用戶列表樣式 */
+#onlineUsers {
+    margin: 10px 0;
+    padding: 10px;
+    background-color: #f8f9fa;
     border-radius: 4px;
 }
 
-.code-container::-webkit-scrollbar-thumb {
-    background: #888;
+#onlineUsers strong {
+    color: #495057;
+    margin-right: 5px;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+
+/* Toast 容器 */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+/* Toast 樣式 */
+.toast {
+    min-width: 250px;
+    margin-bottom: 10px;
+    padding: 15px;
     border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    animation: slideIn 0.3s ease-in-out;
 }
 
-.code-container::-webkit-scrollbar-thumb:hover {
-    background: #555;
+.toast-header {
+    font-weight: bold;
+    margin-bottom: 5px;
 }
 
-/* 動畫效果 */
-@keyframes highlight-change {
-    from { background-color: rgba(255, 193, 7, 0.2); }
-    to { background-color: transparent; }
+.toast-body {
+    font-size: 14px;
 }
 
-.code-line.bg-warning {
-    animation: highlight-change 1s ease-in-out;
+/* Toast 類型樣式 */
+.toast-info {
+    background-color: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    color: #0d47a1;
+}
+
+.toast-success {
+    background-color: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    color: #1b5e20;
+}
+
+.toast-error, .toast-danger {
+    background-color: #ffebee;
+    border-left: 4px solid #f44336;
+    color: #b71c1c;
+}
+
+.toast-warning {
+    background-color: #fff3e0;
+    border-left: 4px solid #ff9800;
+    color: #e65100;
+}
+
+/* Toast 動畫 */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 } 

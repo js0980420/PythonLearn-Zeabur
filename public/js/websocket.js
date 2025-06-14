@@ -10,19 +10,17 @@ class WebSocketManager {
         this.messageQueue = [];
         this.heartbeatInterval = null;
         this.lastHeartbeat = 0;
-        this.isInitialized = false;
     }
 
     // 檢查連接狀態
     isConnected() {
-        return this.ws && this.ws.readyState === WebSocket.OPEN && this.isInitialized;
+        return this.ws && this.ws.readyState === WebSocket.OPEN;
     }
 
     // 建立 WebSocket 連接
     connect(roomName, userName) {
         this.currentUser = userName;
         this.currentRoom = roomName;
-        this.isInitialized = false;
         
         // 智能檢測 WebSocket URL
         let wsUrl;
@@ -34,11 +32,11 @@ class WebSocketManager {
         
         if (isLocalhost) {
             console.log('🏠 檢測到本地開發環境');
-            wsUrl = `ws://${window.location.hostname}:3000`;
+            wsUrl = `ws://${window.location.hostname}:${window.location.port || 3000}`;
         } else {
             // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${window.location.host}`;
         }
         
@@ -46,43 +44,44 @@ class WebSocketManager {
         console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
         
         try {
-            // 如果已有連接，先關閉
-            if (this.ws) {
-                this.ws.close();
-                this.ws = null;
-            }
+        this.ws = new WebSocket(wsUrl);
 
-            this.ws = new WebSocket(wsUrl);
-
-            this.ws.onopen = () => {
-                console.log('✅ WebSocket 連接成功到服務器!');
-                console.log(`📍 連接地址: ${wsUrl}`);
-                this.reconnectAttempts = 0;
+        this.ws.onopen = () => {
+            console.log('✅ WebSocket 連接成功到服務器!');
+            console.log(`📍 連接地址: ${wsUrl}`);
+            this.reconnectAttempts = 0;
                 
                 // 啟動心跳
                 this.startHeartbeat();
                 
                 // 發送加入房間請求
-                this.sendMessage({
-                    type: 'join_room',
+            this.sendMessage({
+                type: 'join_room',
                     room: roomName,
                     userName: userName
-                });
-            };
+            });
 
-            this.ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    this.handleMessage(message);
-                } catch (error) {
-                    console.error('❌ 解析消息失敗:', error, event.data);
+                // 處理消息隊列
+            this.processMessageQueue();
+                
+                // 觸發連接成功事件
+                if (window.onWebSocketConnected) {
+                    window.onWebSocketConnected();
                 }
-            };
+        };
 
-            this.ws.onclose = (event) => {
+        this.ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                this.handleMessage(message);
+            } catch (error) {
+                    console.error('❌ 解析消息失敗:', error, event.data);
+            }
+        };
+
+        this.ws.onclose = (event) => {
                 console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
                 this.stopHeartbeat();
-                this.isInitialized = false;
                 
                 // 嘗試重連
                 if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
@@ -101,12 +100,10 @@ class WebSocketManager {
 
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket 錯誤:', error);
-                this.isInitialized = false;
             };
 
         } catch (error) {
             console.error('❌ 建立 WebSocket 連接失敗:', error);
-            this.isInitialized = false;
         }
     }
 
@@ -133,10 +130,7 @@ class WebSocketManager {
         
         switch (message.type) {
             case 'room_joined':
-                this.isInitialized = true;
                 this.handleRoomJoined(message);
-                // 處理消息隊列
-                this.processMessageQueue();
                 break;
             case 'join_room_error':
                 this.handleJoinRoomError(message);
@@ -204,90 +198,116 @@ class WebSocketManager {
         }
     }
 
-    // 處理房間加入成功
-    handleRoomJoined(message) {
-        console.log(`✅ 成功加入房間: ${message.roomId}`);
-        console.log('📥 房間數據:', message);
-        console.log('   - 代碼長度:', (message.code || '').length);
-        console.log('   - 版本號:', message.version);
-        console.log('   - 用戶數量:', (message.users || []).length);
-        
-        // 更新編輯器內容 - 修復變量名稱
-        if (window.Editor && message.code !== undefined) {
-            console.log('🔄 設置編輯器代碼...');
-            window.Editor.setCode(message.code, message.version);
-            console.log('✅ 編輯器代碼已設置');
-        } else {
-            console.error('❌ 編輯器未找到或房間代碼為空');
-            console.log('   - Editor 存在:', !!window.Editor);
-            console.log('   - 代碼內容:', message.code);
-        }
-        
-        // 初始化 SaveLoadManager
-        if (window.SaveLoadManager && typeof window.SaveLoadManager.init === 'function') {
-            const currentUser = {
-                name: this.currentUser || message.userName || '未知用戶'
-            };
-            window.SaveLoadManager.init(currentUser, message.roomId);
-            console.log('💾 SaveLoadManager 已初始化');
-        } else {
-            console.error('❌ SaveLoadManager 未找到或初始化方法不存在');
-        }
-        
-        // 更新用戶列表
-        this.updateUserList(message.users);
-        
-        // 更新聊天歷史
-        if (message.chatHistory && window.chatManager) {
-            window.chatManager.loadChatHistory(message.chatHistory);
-        } else if (window.Chat) {
-            // 備用方案：使用 Chat 對象
-            if (message.chatHistory && message.chatHistory.length > 0) {
-                message.chatHistory.forEach(msg => {
-                    window.Chat.addMessage(msg.userName, msg.message, false, msg.isTeacher);
-                });
-            }
-        }
-        
-        // 更新房間信息顯示
-        this.updateRoomInfo(message.roomId, message.users);
-        
-        // 顯示加入提示
-        if (window.UI) {
-            if (message.isReconnect) {
-                window.UI.showToast('重連成功', '已重新連接到房間', 'success');
-            } else {
-                window.UI.showToast('加入成功', `已加入房間 "${message.roomId}"`, 'success');
-            }
-        }
-    }
-
     // 處理加入房間錯誤
     handleJoinRoomError(message) {
         console.error('❌ 加入房間失敗:', message.message);
         
+        // 顯示錯誤提示
+        alert(message.message);
+        
         if (message.error === 'name_duplicate') {
-            // 用戶名稱重複
-            if (window.UI) {
-                window.UI.showToast('用戶名稱重複', message.message, 'error');
+            // 清空並聚焦到用戶名稱輸入框
+            const nameInput = document.getElementById('nameInput');
+            if (nameInput) {
+                nameInput.value = '';
+                nameInput.focus();
+                nameInput.style.borderColor = '#dc3545';
+                setTimeout(() => {
+                    nameInput.style.borderColor = '';
+                }, 3000);
             }
-            
-            // 提示用戶修改用戶名稱
-            const newUserName = prompt('您的用戶名稱已被使用，請輸入新的用戶名稱：', this.currentUser + '_' + Math.floor(Math.random() * 100));
-            if (newUserName && newUserName.trim()) {
-                this.currentUser = newUserName.trim();
-                // 重新嘗試加入
-                this.sendMessage({
-                    type: 'join_room',
-                    room: this.currentRoom,
-                    userName: this.currentUser
-                });
-            }
+        }
+        
+        // 重置連接狀態
+        this.currentRoom = null;
+        this.currentUser = null;
+        
+        // 確保留在登入畫面
+        const loginSection = document.getElementById('loginSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        if (loginSection && workspaceSection) {
+            loginSection.style.display = 'block';
+            workspaceSection.style.display = 'none';
+        }
+    }
+
+    // 處理加入房間成功
+    handleRoomJoined(message) {
+        console.log('✅ 成功加入房間:', message);
+        this.currentRoom = message.roomId;
+        this.currentUser = message.userName;
+        
+        // 切換到工作區界面
+        const loginSection = document.getElementById('loginSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        if (loginSection && workspaceSection) {
+            loginSection.style.display = 'none';
+            workspaceSection.style.display = 'block';
+        }
+        
+        // 更新房間信息
+        const currentRoomEl = document.getElementById('currentRoom');
+        const currentUserNameEl = document.getElementById('currentUserName');
+        if (currentRoomEl) currentRoomEl.textContent = message.roomId;
+        if (currentUserNameEl) currentUserNameEl.textContent = message.userName;
+        
+        // 更新用戶列表
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.updateUserList(message.users);
+            });
         } else {
-            // 其他錯誤
-            if (window.UI) {
-                window.UI.showToast('加入失敗', message.message, 'error');
-            }
+            this.updateUserList(message.users);
+        }
+
+        // 更新編輯器代碼
+        if (window.Editor && typeof window.Editor.setCode === 'function') {
+            console.log('📝 設置初始代碼:', message.code);
+            // 強制更新代碼，忽略版本檢查
+            window.Editor.setCode(message.code || '', message.version || 0, true);
+            
+            // 立即請求最新代碼以確保同步
+            this.sendMessage({
+                type: 'load_code',
+                loadLatest: true,
+                room: message.roomId
+            });
+        } else {
+            console.warn('⚠️ 編輯器未就緒，無法設置初始代碼');
+            // 設置重試機制
+            let retryCount = 0;
+            const maxRetries = 5;
+            const retryInterval = setInterval(() => {
+                if (window.Editor && typeof window.Editor.setCode === 'function') {
+                    window.Editor.setCode(message.code || '', message.version || 0, true);
+                    clearInterval(retryInterval);
+                    console.log('✅ 重試成功：編輯器代碼已設置');
+                } else if (++retryCount >= maxRetries) {
+                    clearInterval(retryInterval);
+                    console.error('❌ 編輯器初始化失敗，請重新整理頁面');
+                    if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                        window.UI.showErrorToast('編輯器初始化失敗，請重新整理頁面');
+                    }
+                }
+            }, 1000);
+        }
+
+        // 初始化 SaveLoadManager
+        if (window.SaveLoadManager) {
+            console.log('💾 初始化 SaveLoadManager...');
+            window.SaveLoadManager.init({
+                name: message.userName,
+                id: message.userId
+            }, message.roomId);
+        } else {
+            console.warn('⚠️ SaveLoadManager 未找到');
+        }
+        
+        // 如果是重連，顯示重連成功消息
+        if (message.isReconnect && window.UI) {
+            window.UI.showToast('重連成功', '已重新連接到房間', 'success');
+        } else if (window.UI) {
+            window.UI.showToast('加入成功', `已加入房間 "${message.roomId}"`, 'success');
         }
     }
 
@@ -310,7 +330,29 @@ class WebSocketManager {
     handleUserLeft(message) {
         console.log(`👋 用戶離開: ${message.userName}`);
         
-        // 更新用戶列表（需要從服務器獲取最新列表）
+        // 從當前用戶列表中移除離開的用戶
+        if (message.users) {
+            // 使用新的用戶列表更新UI
+            this.updateUserList(message.users);
+        } else {
+            // 如果沒有收到新的用戶列表，手動從現有列表中移除用戶
+            const onlineUsersElement = document.getElementById('onlineUsers');
+            if (onlineUsersElement) {
+                const userElements = onlineUsersElement.getElementsByClassName('user-indicator');
+                for (let i = userElements.length - 1; i >= 0; i--) {
+                    const userElement = userElements[i];
+                    if (userElement.textContent.includes(message.userName)) {
+                        userElement.remove();
+                        break;
+                    }
+                }
+                
+                // 如果沒有用戶了，顯示"無在線用戶"
+                if (userElements.length === 0) {
+                    onlineUsersElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
+                }
+            }
+        }
         
         // 顯示通知
         if (window.UI && message.userName !== this.currentUser) {
@@ -325,19 +367,78 @@ class WebSocketManager {
         console.log('   - 版本號:', message.version);
         console.log('   - 代碼長度:', (message.code || '').length);
         
-        // 確保編輯器存在並調用處理方法
-        if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
-            console.log('🔄 調用編輯器處理遠程代碼變更...');
-            window.Editor.handleRemoteCodeChange(message);
-        } else {
-            console.error('❌ 編輯器未找到或方法不存在');
-            console.log('   - Editor 存在:', !!window.Editor);
-            console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
+        try {
+            // 確保編輯器存在並調用處理方法
+            if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
+                console.log('🔄 調用編輯器處理遠程代碼變更...');
+                window.Editor.handleRemoteCodeChange(message);
+            } else {
+                console.error('❌ 編輯器未找到或方法不存在');
+                console.log('   - Editor 存在:', !!window.Editor);
+                console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
+                
+                // 降級處理：直接更新代碼
+                if (window.Editor && typeof window.Editor.editor?.setValue === 'function') {
+                    console.log('🔄 降級處理：直接設置代碼');
+                    
+                    // 保存當前游標位置和選擇範圍
+                    const editor = window.Editor.editor;
+                    const currentPosition = editor.getCursor();
+                    const currentSelection = editor.getSelection();
+                    
+                    // 更新代碼
+                    editor.setValue(message.code || '');
+                    
+                    // 更新版本號
+                    if (message.version !== undefined) {
+                        window.Editor.codeVersion = message.version;
+                        if (typeof window.Editor.updateVersionDisplay === 'function') {
+                            window.Editor.updateVersionDisplay();
+                        }
+                    }
+                    
+                    // 如果是其他用戶的更新，恢復游標位置和選擇範圍
+                    if (message.userName !== this.currentUser) {
+                        // 確保游標位置在有效範圍內
+                        const totalLines = editor.lineCount();
+                        if (currentPosition.line < totalLines) {
+                            const lineContent = editor.getLine(currentPosition.line);
+                            editor.setCursor({
+                                line: currentPosition.line,
+                                ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
+                            });
+                            
+                            // 如果有選擇範圍，也恢復它
+                            if (currentSelection && currentSelection.length > 0) {
+                                editor.setSelection(
+                                    currentSelection.anchor || currentPosition,
+                                    currentSelection.head || currentPosition
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    throw new Error('無法更新代碼：編輯器不可用');
+                }
+            }
             
-            // 降級處理：直接更新代碼
-            if (window.Editor && typeof window.Editor.setCode === 'function') {
-                console.log('🔄 降級處理：直接設置代碼');
-                window.Editor.setCode(message.code, message.version);
+            // 更新最後遠程變更時間
+            if (window.Editor) {
+                window.Editor.lastRemoteChangeTime = Date.now();
+            }
+            
+            // 更新協作用戶列表
+            if (message.userName && message.userName !== this.currentUser) {
+                if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
+                    window.Editor.updateCollaboratingUsers(message.userName);
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ 處理代碼變更時發生錯誤:', error);
+            // 顯示錯誤提示
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('更新代碼時發生錯誤，請重新整理頁面');
             }
         }
     }
@@ -354,7 +455,11 @@ class WebSocketManager {
     // 處理聊天消息
     handleChatMessage(message) {
         if (window.Chat) {
-            window.Chat.addMessage(message.userName, message.message, false, message.isTeacher);
+            const { userName, roomName, message: chatText, isTeacher } = message;
+            console.log('💬 收到聊天消息:', { userName, roomName, chatText, isTeacher });
+            window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
+        } else {
+            console.warn('⚠️ Chat 模組未初始化，無法顯示聊天消息');
         }
     }
 
@@ -461,34 +566,51 @@ class WebSocketManager {
         }
     }
 
-    // 🆕 處理衝突通知 - 讓主改方看到衝突處理狀態
+    // 處理衝突通知 - 增強版
     handleConflictNotification(message) {
         console.log('🚨 收到衝突通知:', message);
         
         if (message.targetUser === this.currentUser) {
-            // 顯示主改方的衝突等待界面
-            if (window.ConflictResolver && typeof window.ConflictResolver.showSenderWaitingModal === 'function') {
-                window.ConflictResolver.showSenderWaitingModal(message);
-                console.log('✅ 主改方衝突等待界面已顯示');
+            // 主改方的衝突等待界面
+            if (window.ConflictResolver) {
+                // 準備詳細的衝突信息
+                const conflictInfo = {
+                    ...message,
+                    isSender: true,
+                    localCode: message.conflictData?.localCode || '',
+                    remoteCode: message.conflictData?.remoteCode || '',
+                    localVersion: message.conflictData?.localVersion || 0,
+                    remoteVersion: message.conflictData?.remoteVersion || 0,
+                    changeDetails: message.conflictDetails || {},
+                    timestamp: Date.now()
+                };
+                
+                // 顯示主改方的等待界面
+                window.ConflictResolver.showSenderWaitingModal(conflictInfo);
+                console.log('✅ 主改方衝突等待界面已顯示（含詳細信息）');
+                
+                // 在聊天室顯示詳細狀態
+                if (window.Chat) {
+                    const changeInfo = message.conflictDetails?.changeType || {};
+                    window.Chat.addSystemMessage(
+                        `⚠️ 協作衝突通知:\n` +
+                        `• ${message.conflictWith} 正在處理您的代碼修改\n` +
+                        `• 變更類型: ${changeInfo.description || '未知'}\n` +
+                        `• 修改行數: +${changeInfo.addedLines || 0}/-${changeInfo.removedLines || 0}\n` +
+                        `• 時間差: ${Math.round((message.conflictDetails?.timeDiff || 0)/1000)}秒\n` +
+                        `請等待對方處理或在聊天室討論...`
+                    );
+                }
             } else {
-                // 降級處理：使用簡單的通知
+                // 降級處理
                 if (window.UI) {
                     window.UI.showToast(
-                        '協作衝突', 
-                        `${message.conflictWith} 正在處理您的代碼修改衝突，請稍候...`, 
+                        '協作衝突',
+                        `${message.conflictWith} 正在處理您的代碼修改，請稍候...`,
                         'warning',
-                        5000  // 5秒自動消失
+                        5000
                     );
                 }
-                
-                // 在聊天室顯示狀態
-                if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                    window.Chat.addSystemMessage(
-                        `⏳ ${message.conflictWith} 正在處理與您的協作衝突...`
-                    );
-                }
-                
-                console.log('✅ 使用降級方式顯示衝突通知');
             }
         }
     }
@@ -567,40 +689,42 @@ class WebSocketManager {
 
     // 更新用戶列表
     updateUserList(users) {
-        console.log(`👥 準備更新用戶列表: ${users ? users.length : 0} 個用戶`);
-        console.log(`🔍 用戶數據:`, users);
-        
-        // 使用正確的元素ID
-        const userListElement = document.getElementById('onlineUsers');
-        if (!userListElement) {
-            console.warn('⚠️ 找不到 onlineUsers 元素');
-            return;
-        }
-        
-        if (!users || users.length === 0) {
-            userListElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
-            return;
-        }
-        
-        // 創建用戶列表HTML
-        let userListHTML = '<strong>在線用戶:</strong> ';
-        const userNames = users.map(user => {
-            const userName = user.userName || user.name || '匿名用戶';
-            const status = user.isActive ? '🟢' : '🔴';
-            return `${status} ${userName}`;
+        // 確保 DOM 已加載
+        const waitForElement = (elementId, callback, maxAttempts = 10) => {
+            let attempts = 0;
+            const checkElement = () => {
+                attempts++;
+                const element = document.getElementById(elementId);
+                if (element) {
+                    callback(element);
+                } else if (attempts < maxAttempts) {
+                    setTimeout(checkElement, 100);
+                } else {
+                    console.error(`❌ 找不到用戶列表元素 (${elementId}) - 已重試 ${maxAttempts} 次`);
+                }
+            };
+            checkElement();
+        };
+
+        waitForElement('onlineUsers', (onlineUsersElement) => {
+            if (!users || users.length === 0) {
+                onlineUsersElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
+                return;
+            }
+
+            // 創建用戶列表HTML
+            let userListHTML = '<strong>在線用戶:</strong> ';
+            const userNames = users.map(user => {
+                const userName = user.userName || user.name || '匿名用戶';
+                const isCurrentUser = userName === this.currentUser;
+                const status = user.isActive ? '🟢' : '🔴';
+                const userClass = isCurrentUser ? 'user-indicator current-user' : 'user-indicator';
+                return `<span class="${userClass}">${status} ${userName}${isCurrentUser ? ' (你)' : ''}</span>`;
+            });
+            
+            userListHTML += userNames.join(' ');
+            onlineUsersElement.innerHTML = userListHTML;
         });
-        
-        userListHTML += userNames.join(', ');
-        userListElement.innerHTML = userListHTML;
-        
-        // 更新用戶計數
-        const userCountElement = document.getElementById('userCount');
-        if (userCountElement) {
-            userCountElement.textContent = users.length;
-        }
-        
-        console.log(`✅ 用戶列表已更新: ${users.length} 個用戶`);
-        console.log(`📝 顯示內容: ${userListHTML}`);
     }
 
     // 更新房間信息

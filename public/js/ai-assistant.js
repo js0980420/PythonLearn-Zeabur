@@ -129,14 +129,69 @@ class AIAssistantManager {
 
     // 初始化AI助教
     initialize() {
-        if (!this.responseContainer) {
-            console.error("❌ AI Response container 'aiResponse' not found!");
+        try {
+            // 檢查並獲取必要的 DOM 元素
+            if (!this.responseContainer) {
+                this.responseContainer = document.getElementById('aiResponse');
+                if (!this.responseContainer) {
+                    throw new Error("AI Response container 'aiResponse' not found!");
+                }
+            }
+            
+            if (!this.shareOptions) {
+                this.shareOptions = document.getElementById('aiShareOptions');
+                if (!this.shareOptions) {
+                    throw new Error("AI Share options 'aiShareOptions' not found!");
+                }
+            }
+
+            // 初始化狀態
+            this.isEnabled = true;
+            this.isProcessing = false;
+            this.isRequesting = false;
+            this.isFirstPrompt = true;
+            
+            // 清空並重置UI
+            this.clearResponse();
+            
+            // 檢查全域實例
+            if (!window.AIAssistant) {
+                window.AIAssistant = this;
+            }
+            
+            // 觸發初始化完成事件
+            window.dispatchEvent(new CustomEvent('AIAssistantInitialized', {
+                detail: {
+                    success: true,
+                    instance: this
+                }
+            }));
+            
+            console.log('✅ AI助教模組初始化完成 (V4.1 - 增強版)');
+            return true;
+        } catch (error) {
+            console.error('❌ AI助教初始化失敗:', error.message);
+            
+            // 觸發初始化失敗事件
+            window.dispatchEvent(new CustomEvent('AIAssistantInitialized', {
+                detail: {
+                    success: false,
+                    error: error.message
+                }
+            }));
+            
+            // 顯示錯誤提示
+            if (this.responseContainer) {
+                this.responseContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-triangle"></i> AI助教初始化失敗</h6>
+                        <p class="mb-0">${error.message}</p>
+                        <small>請重新整理頁面或聯繫管理員</small>
+                    </div>
+                `;
+            }
+            return false;
         }
-        if (!this.shareOptions) {
-            console.error("❌ AI Share options 'aiShareOptions' not found!");
-        }
-        this.clearResponse(); // 初始化時清空回應並隱藏分享
-        console.log('✅ AI助教模組初始化完成 (V4 - 真實API版本)');
     }
 
     // 清空AI回應並隱藏分享選項
@@ -957,42 +1012,68 @@ let AIAssistant;
 
 // 確保在 DOM 準備好之後初始化，並添加多重檢查
 function initializeAIAssistant() {
-    try {
-        if (AIAssistant) {
-            console.log('🔍 AIAssistant 已經初始化，跳過重複初始化');
-            return;
+    return new Promise((resolve, reject) => {
+        try {
+            if (AIAssistant) {
+                console.log('🔍 AIAssistant 已經初始化，跳過重複初始化');
+                resolve(AIAssistant);
+                return;
+            }
+            
+            AIAssistant = new AIAssistantManager();
+            
+            // 同時設置為window全域變數，確保在任何地方都能存取
+            window.AIAssistant = AIAssistant;
+            
+            console.log('🔧 AI助教管理器已創建');
+            
+            // 監聽初始化完成事件
+            window.addEventListener('AIAssistantInitialized', function(event) {
+                if (event.detail.success) {
+                    console.log('✅ AI助教初始化成功:', event.detail.instance);
+                    resolve(event.detail.instance);
+                } else {
+                    console.error('❌ AI助教初始化失敗:', event.detail.error);
+                    reject(new Error(event.detail.error));
+                }
+            }, { once: true });
+            
+            // 調用初始化方法
+            const initResult = AIAssistant.initialize();
+            
+            // 設置初始化超時
+            setTimeout(() => {
+                reject(new Error('AI助教初始化超時'));
+            }, 5000);
+            
+        } catch (error) {
+            console.error('❌ AIAssistant 初始化失敗:', error);
+            reject(error);
         }
-        
-        AIAssistant = new AIAssistantManager();
-
-// 同時設置為window全域變數，確保在任何地方都能存取
-window.AIAssistant = AIAssistant;
-
-console.log('🔧 AI助教管理器已創建');
-console.log('✅ 全域 AIAssistant 實例已創建並設置到 window:', AIAssistant);
-        
-        // 觸發一個自定義事件，通知其他模組 AIAssistant 已準備好
-        window.dispatchEvent(new CustomEvent('AIAssistantReady', { detail: AIAssistant }));
-    } catch (error) {
-        console.error('❌ AIAssistant 初始化失敗:', error);
-    }
+    });
 }
 
 // 智能初始化 - 多種方式確保正確初始化
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('DOMContentLoaded 初始化失敗:', error);
+        });
     });
 } else {
     // DOM已經準備好，立即初始化
-    initializeAIAssistant();
+    initializeAIAssistant().catch(error => {
+        console.error('立即初始化失敗:', error);
+    });
 }
 
 // 備用初始化 - 如果上面的方法失敗，在window load事件時再試一次
 window.addEventListener('load', function() {
     if (!window.AIAssistant) {
         console.log('🔄 備用初始化 AIAssistant...');
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('備用初始化失敗:', error);
+        });
     }
 });
 
@@ -1000,7 +1081,24 @@ window.addEventListener('load', function() {
 setTimeout(() => {
     if (!window.AIAssistant) {
         console.log('🔄 延遲初始化 AIAssistant...');
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('延遲初始化失敗:', error);
+            // 顯示錯誤提示
+            if (typeof UI !== 'undefined' && UI.showErrorToast) {
+                UI.showErrorToast('AI助教初始化失敗，請重新整理頁面');
+            } else {
+                const container = document.getElementById('aiResponse');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6><i class="fas fa-exclamation-triangle"></i> AI助教初始化失敗</h6>
+                            <p class="mb-0">${error.message}</p>
+                            <small>請重新整理頁面或聯繫管理員</small>
+                        </div>
+                    `;
+                }
+            }
+        });
     }
 }, 1000);
 
@@ -1027,69 +1125,55 @@ function showAIIntro() {
 } 
 
 // 全域函數（與HTML中的按鈕onclick事件對應）
-function globalAskAI(action) {
+async function globalAskAI(action) {
     console.log('🔍 globalAskAI 調用，action:', action);
-    console.log('🔍 window.AIAssistant 狀態:', !!window.AIAssistant);
-    console.log('🔍 AIAssistant 變數狀態:', !!AIAssistant);
     
-    // 優先使用全域變數，其次使用window屬性
-    const assistant = AIAssistant || window.AIAssistant;
-    
-    if (assistant && typeof assistant.requestAnalysis === 'function') {
-        console.log('✅ AIAssistant 可用，開始分析');
-        assistant.requestAnalysis(action);
-        return;
-    }
-    
-    console.warn("⚠️ AIAssistant 尚未初始化，嘗試重新初始化...");
-    
-    // 立即嘗試初始化
     try {
-        initializeAIAssistant();
+        // 顯示載入提示
+        if (typeof UI !== 'undefined' && UI.showInfoToast) {
+            UI.showInfoToast('正在處理您的請求...');
+        }
         
-        // 檢查初始化是否成功
-        const newAssistant = AIAssistant || window.AIAssistant;
-        if (newAssistant && typeof newAssistant.requestAnalysis === 'function') {
-            console.log('✅ 重新初始化成功，開始分析');
-            newAssistant.requestAnalysis(action);
-            return;
-        }
-    } catch (error) {
-        console.error('❌ 重新初始化失敗:', error);
-    }
-    
-    // 如果初始化失敗，等待事件
-    console.log('⏳ 等待 AIAssistant 初始化事件...');
-    
-    // 監聽 AIAssistant 準備好的事件
-    window.addEventListener('AIAssistantReady', function(event) {
-        console.log('✅ AIAssistant 準備完成，重試分析');
-        if (event.detail && typeof event.detail.requestAnalysis === 'function') {
-            event.detail.requestAnalysis(action);
-        }
-    }, { once: true });
-    
-    // 強制重新初始化
-    setTimeout(() => {
-        initializeAIAssistant();
-    }, 100);
-    
-    // 設置超時，如果 5 秒內還沒準備好就顯示錯誤
-    setTimeout(() => {
-        const finalAssistant = AIAssistant || window.AIAssistant;
-        if (!finalAssistant) {
-            console.error('❌ AI助教初始化最終失敗');
-            if (typeof UI !== 'undefined' && UI.showErrorToast) {
-                UI.showErrorToast('AI助教初始化超時，請重新整理頁面再試');
-            } else {
-                alert('AI助教初始化超時，請重新整理頁面再試');
+        // 檢查 AI 助教實例
+        let assistant = AIAssistant || window.AIAssistant;
+        
+        // 如果實例不存在，嘗試初始化
+        if (!assistant) {
+            console.log('⏳ AI助教未初始化，正在初始化...');
+            try {
+                assistant = await initializeAIAssistant();
+            } catch (error) {
+                throw new Error(`AI助教初始化失敗: ${error.message}`);
             }
         }
-    }, 5000);
-    
-    // 顯示加載提示
-    if (typeof UI !== 'undefined' && UI.showInfoToast) {
-        UI.showInfoToast('AI助教正在載入中，請稍等...');
+        
+        // 檢查必要的方法
+        if (!assistant || typeof assistant.requestAnalysis !== 'function') {
+            throw new Error('AI助教實例無效或缺少必要方法');
+        }
+        
+        // 執行分析
+        console.log('✅ 開始AI分析:', action);
+        await assistant.requestAnalysis(action);
+        
+    } catch (error) {
+        console.error('❌ AI請求失敗:', error);
+        
+        // 顯示錯誤提示
+        if (typeof UI !== 'undefined' && UI.showErrorToast) {
+            UI.showErrorToast(`AI助教錯誤: ${error.message}`);
+        } else {
+            const container = document.getElementById('aiResponse');
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-triangle"></i> AI請求失敗</h6>
+                        <p class="mb-0">${error.message}</p>
+                        <small>請稍後再試或聯繫管理員</small>
+                    </div>
+                `;
+            }
+        }
     }
 }
 
