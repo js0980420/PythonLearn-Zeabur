@@ -10,17 +10,19 @@ class WebSocketManager {
         this.messageQueue = [];
         this.heartbeatInterval = null;
         this.lastHeartbeat = 0;
+        this.isInitialized = false;
     }
 
     // 檢查連接狀態
     isConnected() {
-        return this.ws && this.ws.readyState === WebSocket.OPEN;
+        return this.ws && this.ws.readyState === WebSocket.OPEN && this.isInitialized;
     }
 
     // 建立 WebSocket 連接
     connect(roomName, userName) {
         this.currentUser = userName;
         this.currentRoom = roomName;
+        this.isInitialized = false;
         
         // 智能檢測 WebSocket URL
         let wsUrl;
@@ -32,11 +34,11 @@ class WebSocketManager {
         
         if (isLocalhost) {
             console.log('🏠 檢測到本地開發環境');
-            wsUrl = `ws://${window.location.hostname}:${window.location.port || 3000}`;
+            wsUrl = `ws://${window.location.hostname}:3000`;
         } else {
             // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${window.location.host}`;
         }
         
@@ -44,44 +46,43 @@ class WebSocketManager {
         console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
         
         try {
-        this.ws = new WebSocket(wsUrl);
+            // 如果已有連接，先關閉
+            if (this.ws) {
+                this.ws.close();
+                this.ws = null;
+            }
 
-        this.ws.onopen = () => {
-            console.log('✅ WebSocket 連接成功到服務器!');
-            console.log(`📍 連接地址: ${wsUrl}`);
-            this.reconnectAttempts = 0;
+            this.ws = new WebSocket(wsUrl);
+
+            this.ws.onopen = () => {
+                console.log('✅ WebSocket 連接成功到服務器!');
+                console.log(`📍 連接地址: ${wsUrl}`);
+                this.reconnectAttempts = 0;
                 
                 // 啟動心跳
                 this.startHeartbeat();
                 
                 // 發送加入房間請求
-            this.sendMessage({
-                type: 'join_room',
+                this.sendMessage({
+                    type: 'join_room',
                     room: roomName,
                     userName: userName
-            });
+                });
+            };
 
-                // 處理消息隊列
-            this.processMessageQueue();
-                
-                // 觸發連接成功事件
-                if (window.onWebSocketConnected) {
-                    window.onWebSocketConnected();
-                }
-        };
-
-        this.ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                this.handleMessage(message);
-            } catch (error) {
+            this.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    this.handleMessage(message);
+                } catch (error) {
                     console.error('❌ 解析消息失敗:', error, event.data);
-            }
-        };
+                }
+            };
 
-        this.ws.onclose = (event) => {
+            this.ws.onclose = (event) => {
                 console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
                 this.stopHeartbeat();
+                this.isInitialized = false;
                 
                 // 嘗試重連
                 if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
@@ -100,10 +101,12 @@ class WebSocketManager {
 
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket 錯誤:', error);
+                this.isInitialized = false;
             };
 
         } catch (error) {
             console.error('❌ 建立 WebSocket 連接失敗:', error);
+            this.isInitialized = false;
         }
     }
 
@@ -130,7 +133,10 @@ class WebSocketManager {
         
         switch (message.type) {
             case 'room_joined':
+                this.isInitialized = true;
                 this.handleRoomJoined(message);
+                // 處理消息隊列
+                this.processMessageQueue();
                 break;
             case 'join_room_error':
                 this.handleJoinRoomError(message);
@@ -348,8 +354,7 @@ class WebSocketManager {
     // 處理聊天消息
     handleChatMessage(message) {
         if (window.Chat) {
-            const { userName, roomName, message: chatText, isTeacher } = message;
-            window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
+            window.Chat.addMessage(message.userName, message.message, false, message.isTeacher);
         }
     }
 

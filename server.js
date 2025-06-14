@@ -35,7 +35,7 @@ const wss = new WebSocket.Server({
 const PUBLIC_URL = process.env.PUBLIC_URL || 
                    process.env.VERCEL_URL || 
                    process.env.ZEABUR_URL ||
-                   'http://localhost:8080'; // 默認本地開發
+                   'http://localhost:8080'; // Zeabur 標準端口
 
 const WEBSOCKET_URL = PUBLIC_URL ? PUBLIC_URL.replace('https://', 'wss://').replace('http://', 'ws://') : '';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -95,23 +95,28 @@ async function initializeDatabase(connection) {
                 current_code_content TEXT,
                 current_code_version INT DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_last_activity (last_activity)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ 房間表創建成功');
 
         // 2. 創建用戶表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) NOT NULL UNIQUE,
+                id VARCHAR(100) PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                room_id VARCHAR(100),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_username (username),
+                INDEX idx_last_activity (last_activity)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ 用戶表創建成功');
 
-        // 3. 創建用戶名稱使用記錄表（無外鍵約束，避免複雜依賴）
+        // 3. 創建用戶名稱使用記錄表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS user_names (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -121,114 +126,187 @@ async function initializeDatabase(connection) {
                 used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY unique_user_room (user_id, room_id),
                 INDEX idx_user_name (user_name),
-                INDEX idx_room_id (room_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                INDEX idx_room_id (room_id),
+                INDEX idx_used_at (used_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ 用戶名稱記錄表創建成功');
 
-        // 4. 創建代碼歷史表（可選外鍵約束）
+        // 4. 創建代碼歷史表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS code_history (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id VARCHAR(100),
-                user_name VARCHAR(100),
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
                 code_content TEXT,
-                version INT,
+                version INT NOT NULL,
                 save_name VARCHAR(100),
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
                 INDEX idx_user_id (user_id),
                 INDEX idx_user_name (user_name),
-                INDEX idx_timestamp (timestamp)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                INDEX idx_timestamp (timestamp),
+                INDEX idx_version (version)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ 代碼歷史表創建成功');
 
-        // 確保code_history表有所需的新字段（升級現有表）
-        try {
-            await connection.execute(`
-                ALTER TABLE code_history 
-                ADD COLUMN IF NOT EXISTS user_name VARCHAR(100),
-                ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ADD INDEX IF NOT EXISTS idx_user_name (user_name),
-                ADD INDEX IF NOT EXISTS idx_timestamp (timestamp)
-            `);
-            console.log('✅ 代碼歷史表字段升級成功');
-        } catch (alterError) {
-            // MySQL可能不支持IF NOT EXISTS語法，嘗試單獨添加
-            try {
-                await connection.execute(`ALTER TABLE code_history ADD COLUMN user_name VARCHAR(100)`);
-                console.log('✅ 添加user_name字段成功');
-            } catch (e) {
-                // 字段可能已存在，忽略錯誤
-            }
-            
-            try {
-                await connection.execute(`ALTER TABLE code_history ADD COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
-                console.log('✅ 添加timestamp字段成功');
-            } catch (e) {
-                // 字段可能已存在，忽略錯誤
-            }
-            
-            try {
-                await connection.execute(`ALTER TABLE code_history ADD INDEX idx_user_name (user_name)`);
-                console.log('✅ 添加user_name索引成功');
-            } catch (e) {
-                // 索引可能已存在，忽略錯誤
-            }
-            
-            try {
-                await connection.execute(`ALTER TABLE code_history ADD INDEX idx_timestamp (timestamp)`);
-                console.log('✅ 添加timestamp索引成功');
-            } catch (e) {
-                // 索引可能已存在，忽略錯誤
-            }
-        }
-
-        // 5. 創建聊天消息表（可選外鍵約束）
+        // 5. 創建聊天消息表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id VARCHAR(100),
-                user_name VARCHAR(100),
-                message_content TEXT,
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
+                message_content TEXT NOT NULL,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_room_id (room_id),
-                INDEX idx_user_id (user_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                INDEX idx_user_id (user_id),
+                INDEX idx_timestamp (timestamp)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ 聊天消息表創建成功');
 
-        // 6. 創建AI請求記錄表（可選外鍵約束）
+        // 6. 創建 AI 請求記錄表
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ai_requests (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                room_id VARCHAR(100),
-                user_id VARCHAR(100),
-                request_type VARCHAR(50),
-                code_content TEXT,
-                ai_response TEXT,
+                user_id VARCHAR(100) NOT NULL,
+                room_id VARCHAR(100) NOT NULL,
+                request_type VARCHAR(50) NOT NULL,
+                request_content TEXT NOT NULL,
+                response_content TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_room_id (room_id),
+                completed_at TIMESTAMP NULL,
+                status VARCHAR(20) DEFAULT 'pending',
                 INDEX idx_user_id (user_id),
-                INDEX idx_request_type (request_type)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                INDEX idx_room_id (room_id),
+                INDEX idx_status (status),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
         console.log('✅ AI請求記錄表創建成功');
 
+        // 7. 創建代碼執行記錄表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS code_executions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                code_content TEXT NOT NULL,
+                execution_result TEXT,
+                execution_error TEXT,
+                execution_time FLOAT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ 代碼執行記錄表創建成功');
+
+        // 8. 創建學習統計表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS learning_statistics (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(100) NOT NULL,
+                room_id VARCHAR(100) NOT NULL,
+                code_lines INT DEFAULT 0,
+                execution_count INT DEFAULT 0,
+                error_count INT DEFAULT 0,
+                time_spent INT DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_user_id (user_id),
+                INDEX idx_room_id (room_id),
+                INDEX idx_last_updated (last_updated)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ 學習統計表創建成功');
+
+        // 9. 創建房間代碼快照表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS room_code_snapshots (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100) NOT NULL,
+                code_content TEXT NOT NULL,
+                version INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR(100) NOT NULL,
+                snapshot_type VARCHAR(20) DEFAULT 'auto',
+                INDEX idx_room_id (room_id),
+                INDEX idx_version (version),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ 房間代碼快照表創建成功');
+
+        // 10. 創建房間參與者表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS room_participants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                user_name VARCHAR(100) NOT NULL,
+                join_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_room_user (room_id, user_id),
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id),
+                INDEX idx_last_active (last_active)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ 房間參與者表創建成功');
+
+        // 11. 創建 AI 輔助記錄表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS ai_assistance (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                assistance_type VARCHAR(50) NOT NULL,
+                code_before TEXT,
+                code_after TEXT,
+                ai_suggestions TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id),
+                INDEX idx_assistance_type (assistance_type),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ AI輔助記錄表創建成功');
+
+        // 12. 創建代碼變更表
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS code_changes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                room_id VARCHAR(100) NOT NULL,
+                user_id VARCHAR(100) NOT NULL,
+                change_type VARCHAR(20) NOT NULL,
+                content TEXT,
+                position JSON,
+                version INT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_room_id (room_id),
+                INDEX idx_user_id (user_id),
+                INDEX idx_version (version),
+                INDEX idx_timestamp (timestamp)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('✅ 代碼變更表創建成功');
+
         console.log('✅ 數據庫表初始化完成 - 所有表創建成功');
-        
-        // 檢查表狀態
-        const [tables] = await connection.execute('SHOW TABLES');
-        console.log(`📊 當前數據庫包含 ${tables.length} 個表:`, tables.map(t => Object.values(t)[0]).join(', '));
-        
+
+        // 獲取所有表名
+        const [tables] = await connection.execute(`SHOW TABLES`);
+        const tableNames = tables.map(table => Object.values(table)[0]);
+        console.log(`📊 當前數據庫包含 ${tableNames.length} 個表: ${tableNames.join(', ')}`);
+
     } catch (error) {
         console.error('❌ 數據庫表初始化失敗:', error.message);
-        console.log('🔄 將使用本地存儲模式繼續運行');
-        // 不再拋出錯誤，允許服務器繼續以本地模式運行
+        throw error;
     }
 }
 
@@ -941,42 +1019,48 @@ function handleCursorChange(ws, message) {
 
 // 聊天消息處理
 async function handleChatMessage(ws, message) {
-    const userId = ws.userId;
-    if (!users[userId]) return;
-
-    const { roomId, chatMessage, userName } = message;
-    console.log(`💬 ${userName}: ${chatMessage}`);
-
-    // 保存到數據庫
-    if (isDatabaseAvailable) {
-        try {
-            const query = 'INSERT INTO chat_messages (room_id, user_id, user_name, message_content) VALUES (?, ?, ?, ?)';
-            await pool.execute(query, [roomId, userId, userName, chatMessage]);
-        } catch (dbError) {
-            console.error(`❌ 聊天消息[${roomId}]保存到數據庫失敗:`, dbError.message);
-        }
+    const roomId = message.room || ws.currentRoom;
+    if (!roomId || !rooms[roomId]) {
+        console.error(`❌ 房間不存在: ${roomId}`);
+        return;
     }
 
-    // 廣播給房間內的所有人（包括發送者自己）
+    const room = rooms[roomId];
+    const chatMessage = {
+        id: Date.now() + Math.random(), // 使用時間戳和隨機數生成唯一ID
+        userId: ws.userId,
+        userName: ws.userName,
+        message: message.message,
+        timestamp: Date.now(),
+        isHistory: false
+    };
+
+    // 添加到房間聊天歷史
+    room.chatHistory = room.chatHistory || [];
+    room.chatHistory.push(chatMessage);
+    
+    if (isDatabaseAvailable) {
+        // 數據庫模式：保存到數據庫
+        try {
+            await pool.execute(
+                'INSERT INTO chat_messages (room_id, user_id, message_content) VALUES (?, ?, ?)',
+                [roomId, ws.userId, message.message]
+            );
+            console.log(`💬 聊天消息已保存到數據庫: 房間 ${roomId}, 用戶 ${ws.userName}`);
+        } catch (error) {
+            console.error(`❌ 保存聊天消息到數據庫失敗:`, error.message);
+        }
+    } else {
+        // 本地模式：保存到文件
+        saveDataToFile();
+    }
+    
+    console.log(`💬 ${ws.userName}: ${message.message}`);
+    
+    // 廣播聊天消息
     broadcastToRoom(roomId, {
         type: 'chat_message',
-        userName: userName,
-        message: chatMessage,
-        isTeacher: false
-    });
-
-    // 🛠️ 新增：同時將學生的聊天訊息轉發給正在監控此房間的教師
-    teacherMonitors.forEach(teacherWs => {
-        if (teacherWs.readyState === WebSocket.OPEN && teacherWs.monitorRoomId === roomId) {
-            teacherWs.send(JSON.stringify({
-                type: 'chat_message',
-                userName: userName,
-                message: chatMessage,
-                isTeacher: false,
-                roomId: roomId // 讓教師端知道是哪個房間的消息
-            }));
-            console.log(`👨‍🏫 已將 ${userName} 的消息轉發給監控中的教師`);
-        }
+        ...chatMessage
     });
 }
 

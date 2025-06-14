@@ -12,6 +12,7 @@ class EditorManager {
         this.codeHistory = JSON.parse(localStorage.getItem('codeHistory') || '[]');
         this.maxHistorySize = 10;
         this.lastRemoteChangeTime = null;
+        this.isInitialized = false;
         
         console.log('🔧 編輯器管理器已創建，初始版本號:', this.codeVersion);
     }
@@ -34,7 +35,7 @@ class EditorManager {
             autoCloseBrackets: true,
             matchBrackets: true,
             lineWrapping: true,
-            autofocus: true, // 添加自動聚焦
+            autofocus: true,
             extraKeys: {
                 "Ctrl-S": (cm) => {
                     this.saveCode();
@@ -61,25 +62,31 @@ class EditorManager {
         // 動態設置編輯器樣式
         this.setupEditorStyles();
 
-        // 統一編輯狀態管理 - 只在這裡設置，避免重複
+        // 統一編輯狀態管理
         this.setupEditingStateTracking();
 
-        // 設置自動保存 - 5分鐘一次
+        // 設置自動保存
         this.setupAutoSave();
         
         // 載入歷史記錄
         this.loadHistoryFromStorage();
 
-        // 💡 確保編輯器可以輸入 - 延遲聚焦
+        // 延遲聚焦和初始化完成標記
         setTimeout(() => {
             if (this.editor) {
                 this.editor.refresh();
                 this.editor.focus();
-                console.log('✅ 編輯器已聚焦，可以開始輸入');
+                this.isInitialized = true;
+                console.log('✅ 編輯器已初始化並聚焦，可以開始輸入');
             }
         }, 100);
 
         console.log('✅ 編輯器初始化完成');
+    }
+
+    // 檢查編輯器是否已初始化
+    isReady() {
+        return this.editor && this.isInitialized;
     }
 
     // 動態設置編輯器樣式
@@ -422,7 +429,7 @@ class EditorManager {
             if (message.hasConflictWarning) {
                 if (window.UI && typeof window.UI.showInfoToast === 'function') {
                     window.UI.showInfoToast(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
-            } else {
+                } else {
                     console.log(`⚠️ ${message.userName} 在衝突預警後仍選擇發送了修改`);
                 }
             } else {
@@ -633,7 +640,7 @@ class EditorManager {
             if (successful) {
                 if (window.UI && typeof window.UI.showSuccessToast === 'function') {
                     window.UI.showSuccessToast('代碼已複製到剪貼簿');
-            } else {
+                } else {
                     console.log('代碼已複製到剪貼簿');
                 }
             } else {
@@ -925,68 +932,34 @@ class EditorManager {
 
     // 發送代碼變更 - 🔧 增加衝突預警機制
     sendCodeChange(forceUpdate = false) {
-        if (!wsManager.isConnected() || !this.editor) {
-            console.log('❌ WebSocket 未連接或編輯器未初始化，無法發送代碼變更');
+        if (!wsManager.isConnected() || !this.isReady()) {
+            console.error('❌ WebSocket 未連接或編輯器未初始化，無法發送代碼變更');
             return;
         }
 
-        const code = this.editor.getValue();
-        
-        console.log(`📤 準備發送代碼變更 - 強制發送: ${forceUpdate}, 用戶: ${wsManager.currentUser}`);
-        
-        // 🔧 新增：衝突預警檢查（只在非強制更新時進行）
-        if (!forceUpdate && this.shouldShowConflictWarning()) {
-            const conflictInfo = this.getConflictWarningInfo();
-            const userChoice = confirm(
-                `⚠️ 衝突預警！\n\n` +
-                `檢測到其他同學可能正在編輯中：\n` +
-                `${conflictInfo.activeUsers.join(', ')}\n\n` +
-                `您的修改可能會與他們的工作產生衝突。\n\n` +
-                `建議：\n` +
-                `• 點擊「確定」繼續發送（會通知對方處理衝突）\n` +
-                `• 點擊「取消」暫停發送，在聊天室先協商\n\n` +
-                `要繼續發送嗎？`
-            );
-            
-            if (!userChoice) {
-                console.log('🚫 用戶取消發送，避免潛在衝突');
-                UI.showInfoToast('已取消發送，避免潛在衝突');
-                
-                // 在聊天室提示用戶可以協商
-                if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                    window.Chat.addSystemMessage(`💬 ${wsManager.currentUser} 想要修改代碼，請大家協商一下`);
-                }
-                return;
-            } else {
-                console.log('✅ 用戶選擇繼續發送，將通知其他用戶處理衝突');
-                // 在聊天室預告即將的修改
-                if (window.Chat && typeof window.Chat.addSystemMessage === 'function') {
-                    window.Chat.addSystemMessage(`⚠️ ${wsManager.currentUser} 即將發送代碼修改，可能產生協作衝突`);
-                }
-            }
+        const currentUser = wsManager.currentUser;
+        if (!currentUser) {
+            console.error('❌ 未設置當前用戶，無法發送代碼變更');
+            return;
         }
-        
-        const message = {
-            type: 'code_change',
-            code: code,
-            userName: wsManager.currentUser,
-            timestamp: Date.now(),
-            // 🔧 新增：標記是否為預警後的發送
-            hasConflictWarning: !forceUpdate && this.shouldShowConflictWarning()
-        };
-        
-        // 如果是強制更新，添加標記
-        if (forceUpdate) {
-            message.forceUpdate = true;
-            console.log('🔥 強制更新標記已添加');
-        }
-        
-        wsManager.sendMessage(message);
 
-        // 顯示協作提醒
-        if (this.collaboratingUsers.size > 0) {
-            UI.showCollaborationAlert(this.collaboratingUsers);
+        console.log('📤 準備發送代碼變更 - 強制發送:', forceUpdate, '用戶:', currentUser);
+
+        // 檢查衝突
+        if (this.shouldShowConflictWarning()) {
+            const { hasOtherActiveUsers, hasRecentActivity } = this.getConflictWarningInfo();
+            console.log('🔍 衝突預警檢查:');
+            console.log('   - 其他活躍用戶:', hasOtherActiveUsers ? '有' : '無');
+            console.log('   - 最近活動:', hasRecentActivity ? '是' : '否');
         }
+
+        // 發送代碼變更
+        wsManager.sendMessage({
+            type: 'code_change',
+            code: this.getCode(),
+            version: this.codeVersion + 1,
+            forceUpdate: forceUpdate
+        });
     }
 
     // 🆕 檢查是否需要顯示衝突預警

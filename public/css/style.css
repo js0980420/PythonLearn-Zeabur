@@ -1,0 +1,84 @@
+/* 代碼差異顯示樣式 */
+.code-container {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.code-line {
+    display: flex;
+    padding: 2px 0;
+    border-bottom: 1px solid #f8f9fa;
+}
+
+.code-line:last-child {
+    border-bottom: none;
+}
+
+.code-line:hover {
+    background-color: #f8f9fa;
+}
+
+.line-number {
+    width: 3em;
+    text-align: right;
+    padding: 0 8px;
+    color: #6c757d;
+    user-select: none;
+    border-right: 1px solid #dee2e6;
+}
+
+.line-content {
+    padding: 0 8px;
+    white-space: pre;
+    overflow-x: auto;
+    flex: 1;
+}
+
+/* 差異高亮 */
+.code-line del {
+    background-color: #ffd7d7;
+    text-decoration: line-through;
+    color: #dc3545;
+}
+
+.code-line ins {
+    background-color: #d7ffd7;
+    text-decoration: none;
+    color: #198754;
+}
+
+/* 滾動條美化 */
+.code-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.code-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.code-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.code-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* 動畫效果 */
+@keyframes highlight-change {
+    from { background-color: rgba(255, 193, 7, 0.2); }
+    to { background-color: transparent; }
+}
+
+.code-line.bg-warning {
+    animation: highlight-change 1s ease-in-out;
+} 
