@@ -245,7 +245,7 @@
                                 <button class="btn btn-outline-warning" onclick="globalAskAI('check_errors')"><i class="fas fa-bug"></i> 檢查錯誤</button>
                                 <button class="btn btn-outline-success" onclick="globalAskAI('improvement_tips')"><i class="fas fa-lightbulb"></i> 改進建議</button>
                                 <button class="btn btn-outline-dark" onclick="globalAskAI('run_code')"><i class="fas fa-play"></i> 運行代碼</button>
-                                <button class="btn btn-outline-danger" onclick="globalTestConflictAnalysis()"><i class="fas fa-code-branch"></i> 衝突分析</button>
+                                <button class="btn btn-outline-danger" onclick="globalShowConflictSimulation()"><i class="fas fa-code-branch"></i> 衝突模擬</button>
                                 <button class="btn btn-outline-primary" onclick="globalShowTutorial()"><i class="fas fa-question-circle"></i> 操作教學</button>
                             </div>
                             <div id="aiResponse" class="p-2" style="min-height: 200px; background: #f8f9fa;"></div>
@@ -435,57 +435,105 @@
         function globalImportCode() { if(Editor) Editor.importCode(); else console.error("Editor not ready"); }
         function globalHandleFileImport(event) { if(Editor) Editor.handleFileImport(event); else console.error("Editor not ready"); }
 
-        // 🔍 顯示衝突分析選項
-        function showConflictAnalysisOptions() {
+        // 顯示衝突模擬選項
+        function globalShowConflictSimulation() {
             const modalHTML = `
-                <div class="modal fade" id="conflictAnalysisModal" tabindex="-1" aria-labelledby="conflictAnalysisModalLabel" aria-hidden="true">
+                <div class="modal fade" id="conflictSimulationModal" tabindex="-1">
                     <div class="modal-dialog modal-lg">
                         <div class="modal-content">
-                            <div class="modal-header bg-info text-white">
-                                <h5 class="modal-title" id="conflictAnalysisModalLabel">
-                                    <i class="fas fa-code-branch"></i> 衝突分析工具
+                            <div class="modal-header bg-danger text-white">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-code-branch"></i> 衝突模擬分析
                                 </h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> 
+                                    選擇一個操作，AI 將分析可能產生的衝突並提供建議。
+                                </div>
+                                
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <div class="card h-100">
-                                            <div class="card-body text-center">
-                                                <i class="fas fa-vial text-warning mb-3" style="font-size: 2rem;"></i>
-                                                <h6 class="card-title">測試衝突檢測</h6>
-                                                <p class="card-text text-muted">模擬衝突情況，測試系統的衝突檢測功能</p>
-                                                <button class="btn btn-warning" onclick="performConflictTest()">
-                                                    <i class="fas fa-play"></i> 開始測試
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-file-import text-primary"></i> 
+                                                    導入操作
+                                                </h6>
+                                                <p class="card-text small text-muted">
+                                                    模擬導入新檔案可能造成的衝突
+                                                </p>
+                                                <button class="btn btn-outline-primary btn-sm w-100" 
+                                                    onclick="simulateConflict('import')">
+                                                    <i class="fas fa-play"></i> 模擬導入
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
+                                    
                                     <div class="col-md-6">
                                         <div class="card h-100">
-                                            <div class="card-body text-center">
-                                                <i class="fas fa-history text-primary mb-3" style="font-size: 2rem;"></i>
-                                                <h6 class="card-title">衝突歷史記錄</h6>
-                                                <p class="card-text text-muted">查看過去的衝突記錄和解決方案</p>
-                                                <button class="btn btn-primary" onclick="showConflictHistory()">
-                                                    <i class="fas fa-list"></i> 查看歷史
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-sync-alt text-success"></i> 
+                                                    載入操作
+                                                </h6>
+                                                <p class="card-text small text-muted">
+                                                    模擬載入其他版本可能造成的衝突
+                                                </p>
+                                                <button class="btn btn-outline-success btn-sm w-100" 
+                                                    onclick="simulateConflict('load')">
+                                                    <i class="fas fa-play"></i> 模擬載入
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-users text-warning"></i> 
+                                                    多人編輯
+                                                </h6>
+                                                <p class="card-text small text-muted">
+                                                    模擬多人同時編輯的衝突情況
+                                                </p>
+                                                <button class="btn btn-outline-warning btn-sm w-100" 
+                                                    onclick="simulateConflict('concurrent')">
+                                                    <i class="fas fa-play"></i> 模擬多人編輯
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <div class="card h-100">
+                                            <div class="card-body">
+                                                <h6 class="card-title">
+                                                    <i class="fas fa-random text-info"></i> 
+                                                    自定義模擬
+                                                </h6>
+                                                <p class="card-text small text-muted">
+                                                    自定義衝突場景進行模擬
+                                                </p>
+                                                <button class="btn btn-outline-info btn-sm w-100" 
+                                                    onclick="simulateConflict('custom')">
+                                                    <i class="fas fa-play"></i> 自定義模擬
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div class="mt-4">
+                                <div id="simulationResult" class="mt-4" style="display: none;">
                                     <div class="card">
-                                        <div class="card-body">
-                                            <h6 class="card-title">
-                                                <i class="fas fa-info-circle text-info"></i> 衝突分析說明
-                                            </h6>
-                                            <ul class="mb-0">
-                                                <li><strong>測試衝突檢測：</strong>模擬多人協作衝突，驗證系統反應</li>
-                                                <li><strong>衝突歷史記錄：</strong>查看之前的衝突事件和解決方式</li>
-                                                <li><strong>AI協助分析：</strong>在實際衝突發生時提供智能建議</li>
-                                            </ul>
+                                        <div class="card-header bg-info text-white">
+                                            <i class="fas fa-robot"></i> AI 分析結果
+                                        </div>
+                                        <div class="card-body" id="aiAnalysisContent">
+                                            <!-- AI 分析結果將在這裡顯示 -->
                                         </div>
                                     </div>
                                 </div>
@@ -495,8 +543,8 @@
                 </div>
             `;
             
-            // 移除舊的模態框
-            const existingModal = document.getElementById('conflictAnalysisModal');
+            // 移除舊的模態框（如果存在）
+            const existingModal = document.getElementById('conflictSimulationModal');
             if (existingModal) {
                 existingModal.remove();
             }
@@ -505,356 +553,66 @@
             document.body.insertAdjacentHTML('beforeend', modalHTML);
             
             // 顯示模態框
-            const modal = new bootstrap.Modal(document.getElementById('conflictAnalysisModal'));
+            const modal = new bootstrap.Modal(document.getElementById('conflictSimulationModal'));
             modal.show();
         }
-        
-        // 🧪 執行衝突測試
-        function performConflictTest() {
-            console.log('🧪 開始衝突測試');
+
+        // 模擬衝突
+        async function simulateConflict(type) {
+            console.log('🔄 開始模擬衝突:', type);
             
-            // 關閉選項模態框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('conflictAnalysisModal'));
-            if (modal) modal.hide();
-            
-            // 創建測試衝突數據
-            const testConflictData = {
-                roomId: 'test-room',
-                conflictUser: '測試用戶',
-                userVersion: 1,
-                serverVersion: 2,
-                userCode: Editor.getCode() || '# 測試程式碼\nprint("Hello, World!")',
-                serverCode: '# 模擬的服務器代碼\nprint("Hello, Python!")\nprint("這是衝突測試")'
+            const currentCode = Editor.getCode();
+            let simulationContext = {
+                type: type,
+                code: currentCode,
+                user: wsManager.currentUser,
+                room: wsManager.currentRoom
             };
             
-            // 顯示衝突解決模態框
-            if (window.ConflictResolver) {
-                window.ConflictResolver.showConflictModal(testConflictData);
-                showToast('衝突測試開始，請在彈出的視窗中查看', 'info');
-            } else {
-                showToast('衝突解決器未初始化', 'error');
-            }
-        }
-        
-        // 📊 顯示衝突歷史
-        function showConflictHistory() {
-            console.log('📊 顯示衝突歷史');
-            
-            // 關閉選項模態框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('conflictAnalysisModal'));
-            if (modal) modal.hide();
-            
-            if (typeof conflictHistoryManager === 'undefined') {
-                showToast('衝突歷史管理器未初始化', 'error');
-                return;
+            // 根據不同類型添加額外信息
+            switch(type) {
+                case 'import':
+                    simulationContext.operation = '導入新檔案';
+                    simulationContext.scenario = '當其他用戶正在編輯時導入新檔案';
+                    break;
+                case 'load':
+                    simulationContext.operation = '載入其他版本';
+                    simulationContext.scenario = '當其他用戶正在編輯時載入歷史版本';
+                    break;
+                case 'concurrent':
+                    simulationContext.operation = '多人同時編輯';
+                    simulationContext.scenario = '多個用戶同時修改相同的代碼區域';
+                    break;
+                case 'custom':
+                    simulationContext.operation = '自定義場景';
+                    simulationContext.scenario = '用戶自定義的衝突場景';
+                    break;
             }
             
-            const history = conflictHistoryManager.getConflictHistory();
-            const stats = conflictHistoryManager.getStatistics();
-            
-            let historyHTML = '';
-            if (history.length === 0) {
-                historyHTML = '<div class="text-center py-4"><i class="fas fa-inbox text-muted"></i><p class="text-muted mt-2">尚無衝突記錄</p></div>';
-            } else {
-                historyHTML = history.map(record => `
-                    <div class="card mb-2">
-                        <div class="card-body py-2">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="mb-1">
-                                        <i class="fas fa-users text-primary"></i> 
-                                        與 ${record.conflictUser} 的衝突
-                                        <span class="badge bg-${record.resolution === 'accepted' ? 'success' : record.resolution === 'rejected' ? 'warning' : 'info'} ms-2">
-                                            ${record.resolution === 'accepted' ? '已接受' : record.resolution === 'rejected' ? '已拒絕' : '已合併'}
-                                        </span>
-                                    </h6>
-                                    <small class="text-muted">
-                                        <i class="fas fa-clock"></i> ${new Date(record.timestamp).toLocaleString()}
-                                        <i class="fas fa-home ms-2"></i> ${record.roomId}
-                                    </small>
-                                </div>
-                                <button class="btn btn-sm btn-outline-primary" onclick="showConflictDetail(${record.id})">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </div>
+            try {
+                // 發送到服務器進行 AI 分析
+                const message = {
+                    type: 'ai_request',
+                    action: 'simulate_conflict',
+                    context: simulationContext
+                };
+                
+                await wsManager.sendMessage(message);
+                
+                // 顯示載入中提示
+                document.getElementById('simulationResult').style.display = 'block';
+                document.getElementById('aiAnalysisContent').innerHTML = `
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
+                        <p class="mt-2 mb-0">AI 正在分析可能的衝突情況...</p>
                     </div>
-                `).join('');
-            }
-            
-            const modalHTML = `
-                <div class="modal fade" id="conflictHistoryModal" tabindex="-1" aria-labelledby="conflictHistoryModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-xl">
-                        <div class="modal-content">
-                            <div class="modal-header bg-primary text-white">
-                                <h5 class="modal-title" id="conflictHistoryModalLabel">
-                                    <i class="fas fa-history"></i> 衝突歷史記錄
-                                </h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <!-- 統計信息 -->
-                                <div class="row mb-4">
-                                    <div class="col-md-3">
-                                        <div class="card bg-light">
-                                            <div class="card-body text-center">
-                                                <h4 class="text-primary">${stats.total}</h4>
-                                                <small class="text-muted">總衝突數</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card bg-light">
-                                            <div class="card-body text-center">
-                                                <h4 class="text-success">${stats.accepted}</h4>
-                                                <small class="text-muted">已接受</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card bg-light">
-                                            <div class="card-body text-center">
-                                                <h4 class="text-warning">${stats.rejected}</h4>
-                                                <small class="text-muted">已拒絕</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card bg-light">
-                                            <div class="card-body text-center">
-                                                <h4 class="text-info">${stats.acceptanceRate}%</h4>
-                                                <small class="text-muted">接受率</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- 衝突記錄列表 -->
-                                <div class="conflict-history-list" style="max-height: 400px; overflow-y: auto;">
-                                    ${historyHTML}
-                                </div>
-                                
-                                ${history.length > 0 ? `
-                                <div class="mt-3 text-center">
-                                    <button class="btn btn-outline-danger" onclick="clearConflictHistory()">
-                                        <i class="fas fa-trash"></i> 清除所有記錄
-                                    </button>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // 移除舊的模態框
-            const existingModal = document.getElementById('conflictHistoryModal');
-            if (existingModal) {
-                existingModal.remove();
-            }
-            
-            // 添加新的模態框
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            
-            // 顯示模態框
-            const historyModal = new bootstrap.Modal(document.getElementById('conflictHistoryModal'));
-            historyModal.show();
-        }
-        
-        // 📋 顯示衝突詳情
-        function showConflictDetail(recordId) {
-            if (typeof conflictHistoryManager === 'undefined') return;
-            
-            const record = conflictHistoryManager.getConflictHistory().find(r => r.id === recordId);
-            if (!record) return;
-            
-            const detailHTML = `
-                <div class="modal fade" id="conflictDetailModal" tabindex="-1" aria-labelledby="conflictDetailModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-xl">
-                        <div class="modal-content">
-                            <div class="modal-header bg-info text-white">
-                                <h5 class="modal-title" id="conflictDetailModalLabel">
-                                    <i class="fas fa-info-circle"></i> 衝突詳情 - ${new Date(record.timestamp).toLocaleString()}
-                                </h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <!-- 基本信息 -->
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <div class="card">
-                                            <div class="card-header">
-                                                <i class="fas fa-info"></i> 衝突信息
-                                            </div>
-                                            <div class="card-body">
-                                                <p><strong>房間：</strong>${record.roomId}</p>
-                                                <p><strong>衝突對象：</strong>${record.conflictUser}</p>
-                                                <p><strong>我的版本：</strong>${record.userVersion}</p>
-                                                <p><strong>對方版本：</strong>${record.serverVersion}</p>
-                                                <p><strong>解決方式：</strong>
-                                                    <span class="badge bg-${record.resolution === 'accepted' ? 'success' : record.resolution === 'rejected' ? 'warning' : 'info'}">
-                                                        ${record.resolution === 'accepted' ? '接受對方修改' : record.resolution === 'rejected' ? '拒絕對方修改' : '手動合併'}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="card">
-                                            <div class="card-header">
-                                                <i class="fas fa-chart-bar"></i> 代碼統計
-                                            </div>
-                                            <div class="card-body">
-                                                <p><strong>我的代碼長度：</strong>${record.userCode.length} 字符</p>
-                                                <p><strong>對方代碼長度：</strong>${record.serverCode.length} 字符</p>
-                                                <p><strong>AI分析：</strong>${record.aiAnalysis ? '已提供' : '未使用'}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- 代碼對比 -->
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <div class="card">
-                                            <div class="card-header bg-primary text-white">
-                                                <i class="fas fa-user"></i> 我的代碼
-                                            </div>
-                                            <div class="card-body">
-                                                <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>${record.userCode || '(空白)'}</code></pre>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="card">
-                                            <div class="card-header bg-secondary text-white">
-                                                <i class="fas fa-users"></i> 對方代碼
-                                            </div>
-                                            <div class="card-body">
-                                                <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>${record.serverCode || '(空白)'}</code></pre>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                ${record.aiAnalysis ? `
-                                <!-- AI分析結果 -->
-                                <div class="card">
-                                    <div class="card-header bg-success text-white">
-                                        <i class="fas fa-robot"></i> AI分析結果
-                                    </div>
-                                    <div class="card-body">
-                                        <div style="max-height: 300px; overflow-y: auto;">
-                                            ${record.aiAnalysis.replace(/\n/g, '<br>')}
-                                        </div>
-                                    </div>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            // 移除舊的詳情模態框
-            const existingDetailModal = document.getElementById('conflictDetailModal');
-            if (existingDetailModal) {
-                existingDetailModal.remove();
-            }
-            
-            // 添加新的詳情模態框
-            document.body.insertAdjacentHTML('beforeend', detailHTML);
-            
-            // 顯示詳情模態框
-            const detailModal = new bootstrap.Modal(document.getElementById('conflictDetailModal'));
-            detailModal.show();
-        }
-        
-        // 🗑️ 清除衝突歷史
-        function clearConflictHistory() {
-            if (typeof conflictHistoryManager === 'undefined') return;
-            
-            if (confirm('確定要清除所有衝突歷史記錄嗎？此操作無法恢復。')) {
-                conflictHistoryManager.clearHistory();
+                `;
                 
-                // 關閉模態框並重新顯示
-                const modal = bootstrap.Modal.getInstance(document.getElementById('conflictHistoryModal'));
-                if (modal) modal.hide();
-                
-                showToast('衝突歷史記錄已清除', 'success');
-                
-                // 延遲重新顯示歷史（現在是空的）
-                setTimeout(() => {
-                    showConflictHistory();
-                }, 500);
-            }
-        }
-        
-        // 🔧 編輯器測試和修復函數
-        function globalTestEditor() {
-            console.log('🧪 開始編輯器診斷...');
-            
-            if (!window.Editor) {
-                console.error('❌ Editor 對象不存在');
-                alert('編輯器模組未載入');
-                return;
-            }
-            
-            if (!window.Editor.editor) {
-                console.error('❌ CodeMirror 實例不存在');
-                alert('編輯器實例未創建');
-                return;
-            }
-            
-            const cm = window.Editor.editor;
-            
-            // 檢查基本狀態
-            console.log('📊 編輯器狀態:');
-            console.log('   - 存在:', !!cm);
-            console.log('   - 只讀:', cm.getOption('readOnly'));
-            console.log('   - 聚焦:', cm.hasFocus());
-            console.log('   - 內容長度:', cm.getValue().length);
-            
-            // 強制修復
-            cm.setOption('readOnly', false);
-            cm.refresh();
-            cm.focus();
-            
-            // 測試輸入
-            const testText = '# 測試輸入 - ' + new Date().toLocaleTimeString();
-            cm.setValue(testText);
-            
-            // 檢查是否成功
-            if (cm.getValue() === testText) {
-                console.log('✅ 編輯器輸入測試成功');
-                alert('✅ 編輯器已修復，可以正常輸入！');
-            } else {
-                console.error('❌ 編輯器輸入測試失敗');
-                alert('❌ 編輯器仍有問題，請重新載入頁面');
-            }
-        }
-        
-        // 🔧 編輯器強制重新初始化函數
-        function globalReinitEditor() {
-            console.log('🔄 重新初始化編輯器...');
-            
-            // 銷毀現有編輯器
-            if (window.Editor && window.Editor.editor) {
-                window.Editor.editor.toTextArea();
-                delete window.Editor.editor;
-            }
-            
-            // 重新初始化
-            if (window.Editor && typeof window.Editor.initialize === 'function') {
-                window.Editor.initialize();
-                console.log('✅ 編輯器重新初始化完成');
-                
-                // 延遲測試
-                setTimeout(() => {
-                    globalTestEditor();
-                }, 500);
-            } else {
-                console.error('❌ 無法重新初始化編輯器');
+            } catch (error) {
+                console.error('❌ 模擬請求失敗:', error);
+                UI.showErrorToast('模擬請求失敗，請稍後再試');
             }
         }
 
