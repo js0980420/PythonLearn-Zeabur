@@ -427,12 +427,14 @@ class WebSocketManager {
                 window.Editor.lastRemoteChangeTime = Date.now();
             }
             
+            /* 暫時註解協作用戶更新
             // 更新協作用戶列表
             if (message.userName && message.userName !== this.currentUser) {
                 if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
                     window.Editor.updateCollaboratingUsers(message.userName);
                 }
             }
+            */
             
         } catch (error) {
             console.error('❌ 處理代碼變更時發生錯誤:', error);
