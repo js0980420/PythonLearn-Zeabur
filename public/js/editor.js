@@ -351,10 +351,13 @@ class EditorManager {
             // 直接設置編輯器的值
             if (this.editor) {
                 // 保存當前游標位置和選擇範圍
-                const currentPosition = this.editor.getCursor();
-                const currentSelection = this.editor.getSelection();
+                const currentPosition = this.editor.getCursor('head');
+                const currentAnchor = this.editor.getCursor('anchor');
+                const hasSelection = this.editor.somethingSelected();
+                const currentScrollInfo = this.editor.getScrollInfo();
                 
                 // 更新代碼
+                const prevValue = this.editor.getValue();
                 this.editor.setValue(message.code || '');
                 
                 // 更新版本號
@@ -363,28 +366,41 @@ class EditorManager {
                     this.updateVersionDisplay();
                 }
                 
-                // 如果是其他用戶的更新，恢復游標位置和選擇範圍
+                // 如果是其他用戶的更新，嘗試智能恢復游標位置
                 if (message.userName !== wsManager.currentUser) {
                     // 確保游標位置在有效範圍內
                     const totalLines = this.editor.lineCount();
-                    if (currentPosition.line < totalLines) {
-                        const lineContent = this.editor.getLine(currentPosition.line);
-                        this.editor.setCursor({
-                            line: currentPosition.line,
-                            ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
-                        });
+                    const targetLine = Math.min(currentPosition.line, totalLines - 1);
+                    const lineContent = this.editor.getLine(targetLine) || '';
+                    const targetCh = Math.min(currentPosition.ch, lineContent.length);
+                    
+                    // 恢復游標位置
+                    this.editor.setCursor({
+                        line: targetLine,
+                        ch: targetCh
+                    });
+                    
+                    // 如果之前有選擇範圍，嘗試恢復
+                    if (hasSelection && currentAnchor) {
+                        const anchorLine = Math.min(currentAnchor.line, totalLines - 1);
+                        const anchorLineContent = this.editor.getLine(anchorLine) || '';
+                        const anchorCh = Math.min(currentAnchor.ch, anchorLineContent.length);
                         
-                        // 如果有選擇範圍，也恢復它
-                        if (currentSelection && currentSelection.length > 0) {
-                            this.editor.setSelection(
-                                currentSelection.anchor || currentPosition,
-                                currentSelection.head || currentPosition
-                            );
-                        }
+                        this.editor.setSelection(
+                            { line: anchorLine, ch: anchorCh },
+                            { line: targetLine, ch: targetCh }
+                        );
                     }
+                    
+                    // 恢復滾動位置
+                    this.editor.scrollTo(currentScrollInfo.left, currentScrollInfo.top);
                 }
                 
+                // 強制刷新編輯器
+                this.editor.refresh();
+                
                 console.log('✅ 已更新代碼，版本:', message.version);
+                console.log('📍 游標位置已恢復到:', this.editor.getCursor());
             } else {
                 console.error('❌ 編輯器實例不存在');
             }
@@ -650,7 +666,7 @@ class EditorManager {
 
     // 強化編輯狀態管理 - 簡化且穩定的編輯狀態追蹤
     setupEditingStateTracking() {
-        console.log('🔧 設置強化編輯狀態追蹤系統 (V2 - 更敏感)');
+        console.log('🔧 設置強化編輯狀態追蹤系統 (V3 - 游標優化)');
         
         // 1. 主要編輯事件監聽 - 擴大觸發範圍
         this.editor.on('change', (cm, change) => {
@@ -673,17 +689,17 @@ class EditorManager {
                 clearTimeout(this.changeTimeout);
                 this.changeTimeout = setTimeout(() => {
                     if (this.isEditing) {
+                        // 保存當前游標位置
+                        const currentPosition = this.editor.getCursor();
                         this.sendCodeChange();
+                        // 恢復游標位置
+                        this.editor.setCursor(currentPosition);
                     }
                 }, 300); // 🔧 縮短延遲到300ms
-                
-            } else if (change.origin === 'setValue') {
-                // 程式設置代碼，不觸發編輯狀態
-                console.log('🔄 程式設置代碼，保持原編輯狀態');
             }
         });
         
-        // 2. 🔧 強化按鍵監聽 - 幾乎所有按鍵都觸發編輯狀態
+        // 2. 🔧 強化按鍵監聽 - 優化游標處理
         this.editor.getWrapperElement().addEventListener('keydown', (event) => {
             // 只排除最基本的導航鍵
             const excludeKeys = ['Control', 'Alt', 'Shift', 'Meta', 'CapsLock', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
@@ -700,8 +716,15 @@ class EditorManager {
             }
         });
         
-        // 3. 文本選擇也觸發編輯狀態（準備編輯）
+        // 3. 優化游標活動處理
         this.editor.on('cursorActivity', () => {
+            const currentPosition = this.editor.getCursor();
+            
+            // 保存最後的有效游標位置
+            if (currentPosition && currentPosition.line >= 0) {
+                this.lastValidCursorPosition = currentPosition;
+            }
+            
             if (this.editor.somethingSelected()) {
                 this.isEditing = true;
                 this.editStartTime = Date.now();
@@ -710,52 +733,77 @@ class EditorManager {
             }
         });
         
-        // 4. 監聽粘貼事件
+        // 4. 監聽粘貼事件 - 保持游標位置
         this.editor.getWrapperElement().addEventListener('paste', () => {
+            const currentPosition = this.editor.getCursor();
             this.isEditing = true;
             this.editStartTime = Date.now();
             console.log('📋 粘貼觸發編輯狀態');
             this.resetEditingTimeout();
+            
+            // 確保粘貼後游標位置正確
+            setTimeout(() => {
+                if (this.lastValidCursorPosition) {
+                    this.editor.setCursor(this.lastValidCursorPosition);
+                }
+            }, 0);
         });
         
-        // 5. 監聽剪切事件
+        // 5. 監聽剪切事件 - 保持游標位置
         this.editor.getWrapperElement().addEventListener('cut', () => {
+            const currentPosition = this.editor.getCursor();
             this.isEditing = true;
             this.editStartTime = Date.now();
             console.log('✂️ 剪切觸發編輯狀態');
             this.resetEditingTimeout();
+            
+            // 確保剪切後游標位置正確
+            setTimeout(() => {
+                if (this.lastValidCursorPosition) {
+                    this.editor.setCursor(this.lastValidCursorPosition);
+                }
+            }, 0);
         });
         
-        // 6. 獲得焦點時也可能開始編輯
+        // 6. 優化焦點處理
         this.editor.on('focus', () => {
             console.log('👁️ 編輯器獲得焦點');
-            // 不立即設置編輯狀態，但準備好快速響應
+            // 恢復最後的有效游標位置
+            if (this.lastValidCursorPosition) {
+                this.editor.setCursor(this.lastValidCursorPosition);
+            }
         });
         
-        // 7. 🔧 延長失去焦點的重置時間
+        // 7. 🔧 優化失去焦點處理
         this.editor.on('blur', () => {
             console.log('👋 編輯器失去焦點');
-            // 🔧 延遲5秒重置，給用戶時間回到編輯器
+            // 保存當前游標位置
+            this.lastValidCursorPosition = this.editor.getCursor();
+            
+            // 延遲重置編輯狀態
             setTimeout(() => {
                 if (this.isEditing && (Date.now() - this.editStartTime) > 10000) {
                     this.isEditing = false;
                     console.log('⏹️ 失去焦點超時，重置編輯狀態');
                 }
-            }, 5000); // 延長到5秒
+            }, 5000);
         });
         
-        // 8. 🔧 調整定期狀態監控（降低頻率，延長超時）
+        // 8. 定期狀態監控
         setInterval(() => {
             if (this.isEditing) {
                 const duration = (Date.now() - this.editStartTime) / 1000;
-                if (duration > 60) { // 🔧 延長到60秒自動重置
+                if (duration > 60) {
                     this.isEditing = false;
                     console.log('⏰ 編輯狀態超時自動重置 (60秒)');
+                    
+                    // 保存當前游標位置
+                    this.lastValidCursorPosition = this.editor.getCursor();
                 }
             }
-        }, 15000); // 每15秒檢查一次
+        }, 15000);
         
-        console.log('✅ 強化編輯狀態追蹤系統設置完成 (V2)');
+        console.log('✅ 強化編輯狀態追蹤系統設置完成 (V3)');
     }
     
     // 🔧 調整編輯超時計時器（縮短超時時間）
