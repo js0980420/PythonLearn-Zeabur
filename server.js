@@ -3,7 +3,6 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const { spawn } = require('child_process');
-const { handleAIRequest, checkAIAvailability, executePythonCode } = require('./ai-assistant');
 
 // 基本配置
 const app = express();
