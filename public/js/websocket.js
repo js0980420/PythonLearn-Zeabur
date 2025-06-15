@@ -15,9 +15,12 @@ class WebSocketManager {
         console.log('🔧 WebSocketManager 已創建');
     }
 
-    // 獲取當前房間的活躍用戶列表
+    // 獲取房間內所有活躍用戶
     getActiveUsers() {
-        return Array.from(this.activeUsers.values());
+        // 修正：返回所有活躍用戶，而不是排除當前用戶
+        // 衝突檢查邏輯會在 editor.js 中過濾掉自己
+        const users = Array.from(this.activeUsers.values());
+        return users;
     }
 
     // 更新用戶狀態
