@@ -11,6 +11,7 @@ class EditorManager {
         this.codeHistory = JSON.parse(localStorage.getItem('codeHistory') || '[]');
         this.maxHistorySize = 10;
         this.lastRemoteChangeTime = null;
+        this.isApplyingRemoteChange = false;
         
         console.log('🔧 編輯器管理器已創建，初始版本號:', this.codeVersion);
     }
@@ -303,37 +304,31 @@ class EditorManager {
 
     // 處理遠端代碼變更
     handleRemoteCodeChange(message) {
+        if (!this.editor) {
+            console.error('❌ 編輯器未初始化，無法處理遠程代碼變更');
+            return;
+        }
+
         console.log('📨 收到遠程代碼變更:', message);
         
+        this.isApplyingRemoteChange = true;
         try {
-            // 直接設置編輯器的值
-            if (this.editor) {
-                // 保存當前游標位置
-                const currentPosition = this.editor.getCursor();
-                
-                // 更新代碼
-                this.editor.setValue(message.code || '');
-                
-                // 更新版本號
-                if (message.version !== undefined) {
-                    this.codeVersion = message.version;
-                    this.updateVersionDisplay();
-                }
-                
-                // 恢復游標位置
-                this.editor.setCursor(currentPosition);
-                
-                console.log('✅ 已更新代碼，版本:', message.version);
-            } else {
-                console.error('❌ 編輯器實例不存在');
-            }
+            const currentPosition = this.editor.getCursor();
+            const currentScrollInfo = this.editor.getScrollInfo();
             
-            // 可選：顯示提示
-            if (window.UI && message.userName !== wsManager.currentUser) {
-                window.UI.showInfoToast(`${message.userName} 更新了代碼`);
-            }
+            this.editor.setValue(message.code);
+            this.currentVersion = message.version;
+            
+            this.editor.setCursor(currentPosition);
+
+            // 恢復滾動位置，避免跳轉
+            this.editor.scrollTo(currentScrollInfo.left, currentScrollInfo.top);
+            
+            console.log(`✅ 已更新代碼，版本: ${this.currentVersion}`);
         } catch (error) {
-            console.error('❌ 更新代碼時發生錯誤:', error);
+            console.error('❌ 應用遠程代碼變更時出錯:', error);
+        } finally {
+            this.isApplyingRemoteChange = false;
         }
     }
 
@@ -921,31 +916,22 @@ class EditorManager {
 
     // 初始化編輯器事件
     initializeEditorEvents() {
-        if (!this.editor) return;
-        
-        // 監聽編輯器變更
-        this.editor.on('change', (cm, change) => {
-            // 忽略由setValue觸發的變更
-            if (change.origin === 'setValue') {
+        if (!this.editor) {
+            console.error('❌ 編輯器未初始化，無法綁定事件');
+            return;
+        }
+
+        this.editor.on('change', (instance, change) => {
+            // 🛑 如果變更是由 handleRemoteCodeChange 觸發的，則直接返回
+            if (this.isApplyingRemoteChange) {
                 return;
             }
 
-            // 判斷操作類型
-            let operation = null;
-            if (change.origin === 'paste' || (change.text.length > 1 && change.text.join("").length > 50)) {
-                operation = 'paste'; // 大量文本也視為貼上
-            } else if (change.origin === 'cut' || (change.removed.length > 1 && change.removed.join("").length > 50)) {
-                operation = 'cut'; // 大量刪除也視為剪下
+            // 如果變更來自用戶輸入 (不是 setValue)
+            if (change.origin !== 'setValue') {
+                this.checkConflicts(change, 'typing');
+                this.sendCodeChange(false, 'typing');
             }
-            
-            // 檢查衝突
-            this.checkConflicts(change, operation);
-            
-            // 發送代碼變更 (使用延遲發送以合併快速輸入)
-            clearTimeout(this.changeTimeout);
-            this.changeTimeout = setTimeout(() => {
-                this.sendCodeChange(false, operation);
-            }, 500); // 延遲500毫秒
         });
         
         // 監聽游標移動
