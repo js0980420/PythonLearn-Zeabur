@@ -856,55 +856,51 @@ class EditorManager {
     checkConflicts(change, operation = null) {
         if (!this.editor || !window.wsManager) return;
         
-        // 獲取當前房間的用戶列表
         const activeUsers = window.wsManager.getActiveUsers();
         
-        // 如果房間內只有一個用戶，不需要檢查衝突
         if (activeUsers.length <= 1) {
-            console.log('👤 房間內只有一個用戶，無需檢查衝突');
+            // console.log('👤 房間內只有一個用戶，無需檢查衝突'); // 在單人時減少日誌
             return;
         }
         
-        // 獲取變更的行範圍
         const from = change.from.line;
         const to = change.to.line;
-        
-        // 檢查其他用戶是否正在編輯相同區域
+        const currentUser = window.wsManager.currentUser;
+
+        console.log(`[Conflict Check] at line ${from + 1} by ${currentUser}. Checking against ${activeUsers.length} users.`);
+        console.log('[Conflict Check] All Active Users Status:', JSON.parse(JSON.stringify(activeUsers)));
+
         const conflictingUsers = [];
         activeUsers.forEach(user => {
-            // 跳過自己
-            if (user.userName === window.wsManager.currentUser) return;
+            if (user.userName === currentUser) return;
             
-            // 檢查用戶是否正在編輯
+            console.log(`[Conflict Check]   - Checking user: ${user.userName}`);
+            console.log(`[Conflict Check]     isEditing: ${user.isEditing}, position:`, user.position);
+
             if (user.isEditing && user.position) {
                 const userLine = user.position.line;
+                console.log(`[Conflict Check]     User ${user.userName} is at line ${userLine + 1}. My change is at line ${from + 1}.`);
                 
-                // 檢查是否在變更範圍內或附近（上下各1行）
                 if (userLine >= from - 1 && userLine <= to + 1) {
-                    conflictingUsers.push(user.userName); // 只收集用戶名
+                    console.log(`[Conflict Check]     💥 FOUND CONFLICT with ${user.userName} at line ${userLine + 1}`);
+                    conflictingUsers.push(user.userName);
+                } else {
+                    console.log(`[Conflict Check]     No line conflict with ${user.userName}.`);
                 }
+            } else {
+                console.log(`[Conflict Check]     User ${user.userName} is not marked as editing or has no position.`);
             }
         });
         
-        // 如果有衝突的用戶，顯示警告
         if (conflictingUsers.length > 0) {
             console.log('⚠️ 檢測到代碼衝突，與用戶:', conflictingUsers);
             
-            // 觸發衝突事件
-            if (typeof this.emit === 'function') {
-                this.emit('conflict', {
-                    type: 'editing_conflict',
-                    users: conflictingUsers,
-                    range: { from, to }
-                });
-            }
-            
-            // 顯示衝突警告
             if (window.conflictManager) {
-                // 傳遞操作類型和中心行號
-                const centerLine = Math.floor((from + to) / 2) + 1; // 轉換為1-based行號
+                const centerLine = Math.floor((from + to) / 2) + 1;
                 window.conflictManager.showConflictWarning(conflictingUsers, operation, centerLine);
             }
+        } else {
+            console.log('[Conflict Check] No conflicts detected in this change.');
         }
     }
     
