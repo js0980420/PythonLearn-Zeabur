@@ -248,11 +248,18 @@ class UIManager {
         }
         
         // 自動聚焦到輸入框
-        setTimeout(() => {
-            if (Chat && Chat.focusInput) {
-                Chat.focusInput();
-            }
-        }, 100);
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.focus();
+        }
+    }
+
+    // 🆕 新增：顯示工作區
+    showWorkspace() {
+        const loginSection = document.getElementById('loginSection');
+        const workspaceSection = document.getElementById('workspaceSection');
+        if (loginSection) loginSection.style.display = 'none';
+        if (workspaceSection) workspaceSection.style.display = 'block';
     }
 
     // 顯示協作提醒
@@ -473,45 +480,13 @@ class UIManager {
     }
 }
 
-// 全局UI管理器實例
+// 🟢 新增：創建並導出 UIManager 實例
 const UI = new UIManager();
+window.UI = UI;
 
-// 全局函數供HTML調用
-function joinRoom() {
-    UI.joinRoom();
-}
-
-function leaveRoom() {
-    UI.leaveRoom();
-}
-
-function switchToAI() {
-    UI.switchToAI();
-}
-
-function switchToChat() {
-    console.log('🔍 全局 switchToChat() 函數被調用！');
-    console.log('🔍 UI對象存在:', !!UI);
-    console.log('🔍 UI.switchToChat方法存在:', !!(UI && UI.switchToChat));
-    UI.switchToChat();
-}
-
-function openTeacherDashboard() {
-    UI.openTeacherDashboard();
-}
-
-function saveCode() {
-    Editor.saveCode();
-}
-
-function loadCode() {
-    Editor.loadCode();
-}
-
-function runCode() {
-    Editor.runCode();
-}
-
-function clearOutput() {
-    Editor.clearOutput();
-}
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.UI) {
+        window.UI.initialize();
+    }
+});
