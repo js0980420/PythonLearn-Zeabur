@@ -556,7 +556,7 @@
             const modal = new bootstrap.Modal(document.getElementById('conflictSimulationModal'));
             modal.show();
         }
-
+        
         // 模擬衝突
         async function simulateConflict(type) {
             console.log('🔄 開始模擬衝突:', type);
@@ -607,8 +607,8 @@
                             <span class="visually-hidden">Loading...</span>
                         </div>
                         <p class="mt-2 mb-0">AI 正在分析可能的衝突情況...</p>
-                    </div>
-                `;
+                </div>
+            `;
                 
             } catch (error) {
                 console.error('❌ 模擬請求失敗:', error);

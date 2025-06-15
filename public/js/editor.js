@@ -515,7 +515,9 @@ class EditorManager {
         
         const reader = new FileReader();
         reader.onload = (e) => {
-            this.editor.setValue(e.target.result);
+            // 更新代碼並觸發變更事件
+            this.handleImport(e.target.result);
+            
             if (window.UI && typeof window.UI.showSuccessToast === 'function') {
                 window.UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
             } else {

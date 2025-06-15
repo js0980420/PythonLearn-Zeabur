@@ -23,23 +23,24 @@ class WebSocketManager {
     // 更新用戶狀態
     updateUserStatus(userData) {
         const { userName, isEditing, position } = userData;
-        
         if (userName === this.currentUser) return;
-        
-        // 更新或添加用戶
-        this.activeUsers.set(userName, {
-            userName,
-            isEditing: isEditing || false,
-            position: position || null,
+
+        const existingUser = this.activeUsers.get(userName) || { userName: userName, isEditing: false, position: null };
+
+        const updatedUser = {
+            ...existingUser,
+            isEditing: isEditing !== undefined ? isEditing : existingUser.isEditing,
+            position: position || existingUser.position,
             lastActivity: Date.now()
-        });
-        
-        // 通知編輯器更新協作狀態
-        if (window.editorManager) {
-            editorManager.updateCollaboratorStatus(userData);
+        };
+
+        this.activeUsers.set(userName, updatedUser);
+
+        if (window.Editor) {
+            window.Editor.updateCollaboratorStatus(updatedUser);
         }
-        
-        console.log(`👥 更新用戶狀態: ${userName}, 編輯中: ${isEditing}`);
+
+        console.log(`👥 更新用戶狀態: ${userName}, 編輯中: ${updatedUser.isEditing}, 位置:`, updatedUser.position);
     }
     
     // 移除用戶
@@ -226,7 +227,7 @@ class WebSocketManager {
                 this.handleCodeChange(message);
                 break;
             case 'cursor_changed':
-                this.handleCursorChange(message);
+                this.handleCursorChanged(message);
                 break;
             case 'chat_message':
                 this.handleChatMessage(message);
@@ -272,6 +273,9 @@ class WebSocketManager {
                 } else {
                     console.warn('⚠️ SaveLoadManager 未就緒，無法處理消息:', message.type);
                 }
+                break;
+            case 'editor_focus_changed':
+                this.handleEditorFocusChanged(message);
                 break;
             default:
                 console.warn('⚠️ 未知消息類型:', message.type);
@@ -526,12 +530,14 @@ class WebSocketManager {
     }
 
     // 處理游標變更
-    handleCursorChange(message) {
-        if (window.Editor && typeof window.Editor.handleRemoteCursorChange === 'function') {
-            window.Editor.handleRemoteCursorChange(message);
-        } else {
-            console.log('💡 編輯器不支援光標位置同步（正常）');
-        }
+    handleCursorChanged(message) {
+        const { userName, cursor } = message;
+        if (userName === this.currentUser) return;
+
+        this.updateUserStatus({
+            userName: userName,
+            position: cursor
+        });
     }
 
     // 處理聊天消息
@@ -897,6 +903,17 @@ class WebSocketManager {
         
         this.sendMessage(message);
         console.log('📤 代碼變更已發送:', { forced, operation });
+    }
+
+    // 處理編輯器焦點變更
+    handleEditorFocusChanged(message) {
+        const { userName, focused } = message;
+        if (userName === this.currentUser) return;
+
+        this.updateUserStatus({
+            userName: userName,
+            isEditing: focused
+        });
     }
 }
 

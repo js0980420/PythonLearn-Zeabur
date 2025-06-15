@@ -724,6 +724,10 @@ async function handleMessage(ws, message) {
             handleTeacherMonitor(ws, message);
             break;
 
+        case 'editor_focus':
+            handleEditorFocus(ws, message);
+            break;
+
         case 'teacher_broadcast':
             handleTeacherBroadcast(ws, message);
             break;
@@ -3246,3 +3250,27 @@ app.get('/api/ai-config', (req, res) => {
 app.get('/test-ai', (req, res) => {
     res.sendFile(path.join(__dirname, 'test_ai_assistant.html'));
 });
+
+// 處理編輯器焦點
+function handleEditorFocus(ws, message) {
+    const user = users[ws.userId];
+    if (!user || !user.roomId) {
+        return;
+    }
+    const room = rooms[user.roomId];
+    if (!room) {
+        return;
+    }
+    
+    if (room.users[ws.userId]) {
+        room.users[ws.userId].isEditing = message.focused;
+    }
+    
+    // 廣播焦點狀態給房間內其他用戶
+    broadcastToRoom(user.roomId, {
+        type: 'editor_focus_changed',
+        userId: ws.userId,
+        userName: user.name,
+        focused: message.focused
+    }, ws.userId);
+}
