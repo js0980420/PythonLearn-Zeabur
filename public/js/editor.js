@@ -859,7 +859,6 @@ class EditorManager {
         const activeUsers = window.wsManager.getActiveUsers();
         
         if (activeUsers.length <= 1) {
-            // console.log('👤 房間內只有一個用戶，無需檢查衝突'); // 在單人時減少日誌
             return;
         }
         
@@ -867,40 +866,40 @@ class EditorManager {
         const to = change.to.line;
         const currentUser = window.wsManager.currentUser;
 
-        console.log(`[Conflict Check] at line ${from + 1} by ${currentUser}. Checking against ${activeUsers.length} users.`);
-        console.log('[Conflict Check] All Active Users Status:', JSON.parse(JSON.stringify(activeUsers)));
+        // 為日誌記錄對用戶數據進行淨化，避免潛在的循環引用錯誤
+        const sanitizedUsers = activeUsers.map(u => ({ userName: u.userName, position: u.position, isEditing: u.isEditing }));
+        console.log(`[Conflict Check] User '${currentUser}' changed line ${from + 1}. Checking against ${activeUsers.length - 1} other users.`);
+        console.log('[Conflict Check] Collaborator Status:', JSON.stringify(sanitizedUsers, null, 2));
 
         const conflictingUsers = [];
         activeUsers.forEach(user => {
             if (user.userName === currentUser) return;
             
-            console.log(`[Conflict Check]   - Checking user: ${user.userName}`);
-            console.log(`[Conflict Check]     isEditing: ${user.isEditing}, position:`, user.position);
-
-            if (user.isEditing && user.position) {
+            // 新邏輯：只檢查游標位置，不再依賴 isEditing 狀態
+            if (user.position) {
                 const userLine = user.position.line;
-                console.log(`[Conflict Check]     User ${user.userName} is at line ${userLine + 1}. My change is at line ${from + 1}.`);
+                console.log(`[Conflict Check]   - Checking User: ${user.userName}, Cursor at line: ${userLine + 1}.`);
                 
+                // 檢查游標是否在變更範圍內或附近（上下各1行）
                 if (userLine >= from - 1 && userLine <= to + 1) {
-                    console.log(`[Conflict Check]     💥 FOUND CONFLICT with ${user.userName} at line ${userLine + 1}`);
+                    console.log(`[Conflict Check]     💥 CURSOR CONFLICT with ${user.userName} at line ${userLine + 1}`);
                     conflictingUsers.push(user.userName);
-                } else {
-                    console.log(`[Conflict Check]     No line conflict with ${user.userName}.`);
                 }
             } else {
-                console.log(`[Conflict Check]     User ${user.userName} is not marked as editing or has no position.`);
+                console.log(`[Conflict Check]   - User ${user.userName} has no position data.`);
             }
         });
         
         if (conflictingUsers.length > 0) {
-            console.log('⚠️ 檢測到代碼衝突，與用戶:', conflictingUsers);
+            console.log('⚠️ 檢測到游標位置衝突，與用戶:', conflictingUsers);
             
             if (window.conflictManager) {
                 const centerLine = Math.floor((from + to) / 2) + 1;
-                window.conflictManager.showConflictWarning(conflictingUsers, operation, centerLine);
+                // 將操作類型標記為游標衝突
+                window.conflictManager.showConflictWarning(conflictingUsers, 'cursor_conflict', centerLine);
             }
         } else {
-            console.log('[Conflict Check] No conflicts detected in this change.');
+            console.log('[Conflict Check] No cursor conflicts detected.');
         }
     }
     
