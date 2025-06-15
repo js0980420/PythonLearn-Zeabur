@@ -3017,19 +3017,41 @@ function handleCodeChange(ws, message) {
         return;
     }
 
-    // 更新房間代碼
+    // 更新房間代碼和版本
     room.code = message.code;
     room.version = (room.version || 0) + 1;
     
-    // 廣播代碼變更給房間內所有用戶
-    broadcastToRoom(user.roomId, {
+    // 更新發送者的游標位置
+    if(room.users[ws.userId]) {
+        room.users[ws.userId].cursor = message.cursor;
+        room.users[ws.userId].isEditing = true; // 將發送變更的用戶標記為正在編輯
+        room.users[ws.userId].lastActivity = Date.now();
+    }
+    
+    // 準備所有活躍用戶的狀態列表
+    const activeUsersStatus = Object.values(room.users)
+        .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+        .map(u => ({
+            userId: u.userId,
+            userName: u.userName,
+            isEditing: u.userId === ws.userId ? true : (u.isEditing || false), // 確保發送者是編輯狀態
+            cursor: u.cursor
+        }));
+
+    // 構建廣播消息，包含程式碼和所有用戶的狀態
+    const messageToSend = {
         type: 'code_change',
         code: message.code,
         version: room.version,
         userName: user.name,
         userId: ws.userId,
-        timestamp: Date.now()
-    });
+        timestamp: Date.now(),
+        operation: message.operation,
+        collaborators: activeUsersStatus // <--- 新增：包含所有協作者的即時狀態
+    };
+    
+    // 廣播代碼變更給房間內所有用戶
+    broadcastToRoom(user.roomId, messageToSend);
 }
 
 // 🆕 處理衝突通知 - 轉發給目標用戶

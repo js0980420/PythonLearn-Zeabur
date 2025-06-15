@@ -696,6 +696,7 @@ class EditorManager {
         }
 
         const code = this.editor.getValue();
+        const cursor = this.editor.getCursor(); // 獲取當前游標位置
         
         console.log(`📤 準備發送代碼變更 - 強制發送: ${forceUpdate}, 用戶: ${window.wsManager.currentUser}, 操作類型: ${operation || '一般編輯'}`);
         
@@ -705,7 +706,8 @@ class EditorManager {
             code: code,
             forced: forceUpdate,
             operation: operation,
-            version: this.codeVersion
+            version: this.codeVersion,
+            cursor: cursor // <--- 新增：發送當前游標位置
         });
     }
 
@@ -879,21 +881,23 @@ class EditorManager {
                 
                 // 檢查是否在變更範圍內或附近（上下各1行）
                 if (userLine >= from - 1 && userLine <= to + 1) {
-                    conflictingUsers.push(user);
+                    conflictingUsers.push(user.userName); // 只收集用戶名
                 }
             }
         });
         
         // 如果有衝突的用戶，顯示警告
         if (conflictingUsers.length > 0) {
-            console.log('⚠️ 檢測到代碼衝突:', conflictingUsers);
+            console.log('⚠️ 檢測到代碼衝突，與用戶:', conflictingUsers);
             
             // 觸發衝突事件
-            this.emit('conflict', {
-                type: 'editing_conflict',
-                users: conflictingUsers,
-                range: { from, to }
-            });
+            if (typeof this.emit === 'function') {
+                this.emit('conflict', {
+                    type: 'editing_conflict',
+                    users: conflictingUsers,
+                    range: { from, to }
+                });
+            }
             
             // 顯示衝突警告
             if (window.conflictManager) {
@@ -940,26 +944,27 @@ class EditorManager {
         
         // 監聽編輯器變更
         this.editor.on('change', (cm, change) => {
+            // 忽略由setValue觸發的變更
+            if (change.origin === 'setValue') {
+                return;
+            }
+
             // 判斷操作類型
             let operation = null;
-            
-            // 檢查是否是大量修改操作
-            if (change.origin === 'paste') {
-                operation = 'paste';
-            } else if (change.origin === 'cut') {
-                operation = 'cut';
-            } else if (change.origin === '+input' || change.origin === '+delete') {
-                // 一般的輸入或刪除操作
-                operation = null;
-            } else if (change.origin === 'setValue') {
-                operation = 'load';
+            if (change.origin === 'paste' || (change.text.length > 1 && change.text.join("").length > 50)) {
+                operation = 'paste'; // 大量文本也視為貼上
+            } else if (change.origin === 'cut' || (change.removed.length > 1 && change.removed.join("").length > 50)) {
+                operation = 'cut'; // 大量刪除也視為剪下
             }
             
             // 檢查衝突
             this.checkConflicts(change, operation);
             
-            // 發送代碼變更
-            this.sendCodeChange(false, operation);
+            // 發送代碼變更 (使用延遲發送以合併快速輸入)
+            clearTimeout(this.changeTimeout);
+            this.changeTimeout = setTimeout(() => {
+                this.sendCodeChange(false, operation);
+            }, 500); // 延遲500毫秒
         });
         
         // 監聽游標移動
@@ -968,28 +973,31 @@ class EditorManager {
                 const cursor = this.editor.getCursor();
                 window.wsManager.sendMessage({
                     type: 'cursor_change',
-                    position: cursor
+                    position: cursor,
+                    room: window.wsManager.currentRoom
                 });
             }
         });
         
         // 監聽焦點變化
         this.editor.on('focus', () => {
-            this.handleEditorFocus();
+            this.isEditing = true;
             if (window.wsManager && window.wsManager.ws && window.wsManager.ws.readyState === WebSocket.OPEN) {
                 window.wsManager.sendMessage({
                     type: 'editor_focus',
-                    focused: true
+                    focused: true,
+                    room: window.wsManager.currentRoom
                 });
             }
         });
         
         this.editor.on('blur', () => {
-            this.handleEditorBlur();
+            this.isEditing = false;
             if (window.wsManager && window.wsManager.ws && window.wsManager.ws.readyState === WebSocket.OPEN) {
                 window.wsManager.sendMessage({
                     type: 'editor_focus',
-                    focused: false
+                    focused: false,
+                    room: window.wsManager.currentRoom
                 });
             }
         });

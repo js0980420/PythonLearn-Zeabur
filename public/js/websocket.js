@@ -447,10 +447,35 @@ class WebSocketManager {
     // 處理代碼變更
     handleCodeChange(message) {
         console.log('📨 收到代碼變更消息:', message);
-        console.log('   - 來源用戶:', message.userName);
-        console.log('   - 版本號:', message.version);
-        console.log('   - 代碼長度:', (message.code || '').length);
         
+        // 🆕 新增：處理協作者狀態列表
+        if (message.collaborators && Array.isArray(message.collaborators)) {
+            const updatedUsers = new Map();
+            message.collaborators.forEach(user => {
+                // 不要更新自己的狀態，以本地為準
+                if (user.userName !== this.currentUser) {
+                    updatedUsers.set(user.userName, {
+                        userName: user.userName,
+                        userId: user.userId,
+                        isEditing: user.isEditing || false,
+                        position: user.cursor,
+                        lastActivity: Date.now()
+                    });
+                }
+            });
+
+            // 與現有列表合併，保留自己的資訊
+            const self = this.activeUsers.get(this.currentUser);
+            this.activeUsers = updatedUsers;
+            if (self) {
+                this.activeUsers.set(this.currentUser, self);
+            }
+            
+            console.log('👥 協作者狀態已更新:', this.getActiveUsers());
+            // 主動更新一次UI
+            this.updateUserList(this.getActiveUsers());
+        }
+
         try {
             // 確保編輯器存在並調用處理方法
             if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
