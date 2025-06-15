@@ -313,7 +313,7 @@ class EditorManager {
         
         this.isApplyingRemoteChange = true;
         try {
-                const currentPosition = this.editor.getCursor();
+            const currentPosition = this.editor.getCursor();
             const currentScrollInfo = this.editor.getScrollInfo();
             
             this.editor.setValue(message.code);
@@ -325,6 +325,9 @@ class EditorManager {
             this.editor.scrollTo(currentScrollInfo.left, currentScrollInfo.top);
             
             console.log(`✅ 已更新代碼，版本: ${this.currentVersion}`);
+
+            // 🟢 修復：記錄遠端變更時間，以觸發衝突預警
+            this.lastRemoteChangeTime = Date.now();
         } catch (error) {
             console.error('❌ 應用遠程代碼變更時出錯:', error);
         } finally {
@@ -983,6 +986,14 @@ class EditorManager {
         this.sendCodeChange(true, 'import');
         
         console.log('📥 代碼導入完成');
+    }
+
+    // 🆕 新增：添加協作者
+    addCollaboratingUser(userName) {
+        if (userName !== wsManager.currentUser) {
+            this.collaboratingUsers.add(userName);
+            console.log(`🤝 新增協作者: ${userName}, 目前協作者:`, Array.from(this.collaboratingUsers));
+        }
     }
 }
 

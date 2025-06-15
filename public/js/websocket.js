@@ -320,240 +320,73 @@ class WebSocketManager {
 
     // 處理加入房間成功
     handleRoomJoined(message) {
-        console.log('✅ 成功加入房間:', message);
-        this.currentRoom = message.roomId;
-        this.currentUser = message.userName;
+        console.log('✅ 成功加入房間:', message.roomId);
+        console.log('👥 目前用戶列表:', message.users);
+        console.log('📜 房間代碼版本:', message.version);
+        console.log('📝 房間代碼長度:', message.code?.length || 0);
         
-        // 切換到工作區界面
-        const loginSection = document.getElementById('loginSection');
-        const workspaceSection = document.getElementById('workspaceSection');
-        if (loginSection && workspaceSection) {
-            loginSection.style.display = 'none';
-            workspaceSection.style.display = 'block';
-        }
-        
-        // 更新房間信息
-        const currentRoomEl = document.getElementById('currentRoom');
-        const currentUserNameEl = document.getElementById('currentUserName');
-        if (currentRoomEl) currentRoomEl.textContent = message.roomId;
-        if (currentUserNameEl) currentUserNameEl.textContent = message.userName;
+        this.isConnected = true;
+        UI.showWorkspace();
         
         // 更新用戶列表
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                this.updateUserList(message.users);
-            });
-        } else {
-            this.updateUserList(message.users);
-        }
+        this.updateUserList(message.users);
 
-        // 更新編輯器代碼
-        if (window.Editor && typeof window.Editor.setCode === 'function') {
-            console.log('📝 設置初始代碼:', message.code);
-            // 強制更新代碼，忽略版本檢查
-            window.Editor.setCode(message.code || '', message.version || 0, true);
-            
-            // 立即請求最新代碼以確保同步
-            this.sendMessage({
-                type: 'load_code',
-                loadLatest: true,
-                room: message.roomId
+        // 🟢 新增：更新編輯器的協作者列表
+        if (window.Editor && message.users) {
+            message.users.forEach(user => {
+                Editor.addCollaboratingUser(user.userName || user.name);
             });
-        } else {
-            console.warn('⚠️ 編輯器未就緒，無法設置初始代碼');
-            // 設置重試機制
-            let retryCount = 0;
-            const maxRetries = 5;
-            const retryInterval = setInterval(() => {
-                if (window.Editor && typeof window.Editor.setCode === 'function') {
-                    window.Editor.setCode(message.code || '', message.version || 0, true);
-                    clearInterval(retryInterval);
-                    console.log('✅ 重試成功：編輯器代碼已設置');
-                } else if (++retryCount >= maxRetries) {
-                    clearInterval(retryInterval);
-                    console.error('❌ 編輯器初始化失敗，請重新整理頁面');
-                    if (window.UI && typeof window.UI.showErrorToast === 'function') {
-                        window.UI.showErrorToast('編輯器初始化失敗，請重新整理頁面');
-                    }
-                }
-            }, 1000);
-        }
-
-        // 初始化 SaveLoadManager
-        if (window.SaveLoadManager) {
-            console.log('💾 初始化 SaveLoadManager...');
-            window.SaveLoadManager.init({
-                name: message.userName,
-                id: message.userId
-            }, message.roomId);
-        } else {
-            console.warn('⚠️ SaveLoadManager 未找到');
         }
         
-        // 如果是重連，顯示重連成功消息
-        if (message.isReconnect && window.UI) {
-            window.UI.showToast('重連成功', '已重新連接到房間', 'success');
-        } else if (window.UI) {
-            window.UI.showToast('加入成功', `已加入房間 "${message.roomId}"`, 'success');
+        // 使用 Editor.setCode 來設置初始代碼和版本
+        if (window.Editor) {
+            Editor.setCode(message.code, message.version);
+        } else {
+            console.error('❌ Editor 未初始化，無法設置初始代碼');
         }
     }
 
     // 處理用戶加入
     handleUserJoined(message) {
-        console.log(`👤 用戶加入: ${message.userName}`);
-        
-        // 更新用戶列表
-        if (message.users) {
-            this.updateUserList(message.users);
-        }
-        
-        // 顯示通知
-        if (window.UI && message.userName !== this.currentUser) {
-            window.UI.showToast('新用戶加入', `${message.userName} 加入了房間`, 'info');
+        console.log(`👋 新用戶加入: ${message.userName}`);
+        UI.showToast(`${message.userName} 加入了房間`, 'info');
+        this.updateUserList(message.users);
+
+        // 🟢 新增：通知編輯器有新協作者
+        if (window.Editor) {
+            Editor.addCollaboratingUser(message.userName);
         }
     }
 
     // 處理用戶離開
     handleUserLeft(message) {
-        console.log(`👋 用戶離開: ${message.userName}`);
-        
-        // 從當前用戶列表中移除離開的用戶
-        if (message.users) {
-            // 使用新的用戶列表更新UI
-            this.updateUserList(message.users);
-        } else {
-            // 如果沒有收到新的用戶列表，手動從現有列表中移除用戶
-            const onlineUsersElement = document.getElementById('onlineUsers');
-            if (onlineUsersElement) {
-                const userElements = onlineUsersElement.getElementsByClassName('user-indicator');
-                for (let i = userElements.length - 1; i >= 0; i--) {
-                    const userElement = userElements[i];
-                    if (userElement.textContent.includes(message.userName)) {
-                        userElement.remove();
-                        break;
-                    }
-                }
-                
-                // 如果沒有用戶了，顯示"無在線用戶"
-                if (userElements.length === 0) {
-                    onlineUsersElement.innerHTML = '<strong>在線用戶:</strong> <span class="text-muted">無</span>';
-                }
-            }
-        }
-        
-        // 顯示通知
-        if (window.UI && message.userName !== this.currentUser) {
-            window.UI.showToast('用戶離開', `${message.userName} 離開了房間`, 'info');
+        console.log(`👋 ${message.userName} 離開了房間`);
+        UI.showToast(`${message.userName} 離開了房間`, 'warning');
+        this.updateUserList(message.users);
+
+        // 🟢 新增：通知編輯器移除協作者
+        if (window.Editor) {
+            Editor.removeCollaboratingUser(message.userName);
         }
     }
 
     // 處理代碼變更
     handleCodeChange(message) {
-        console.log('📨 收到代碼變更消息:', message);
+        console.log(`🔄 ${message.userName} 變更了代碼`);
         
-        // 🆕 新增：處理協作者狀態列表
-        if (message.collaborators && Array.isArray(message.collaborators)) {
-            const updatedUsers = new Map();
-            message.collaborators.forEach(user => {
-                // 不要更新自己的狀態，以本地為準
-                if (user.userName !== this.currentUser) {
-                    updatedUsers.set(user.userName, {
-                        userName: user.userName,
-                        userId: user.userId,
-                        isEditing: user.isEditing || false,
-                        position: user.cursor,
-                        lastActivity: Date.now()
-                    });
-                }
-            });
-
-            // 與現有列表合併，保留自己的資訊
-            const self = this.activeUsers.get(this.currentUser);
-            this.activeUsers = updatedUsers;
-            if (self) {
-                this.activeUsers.set(this.currentUser, self);
+        // 確保不是自己發送的更新
+        if (message.userName === this.currentUser) {
+            console.log('✅ 是自己的代碼更新，已忽略');
+            // 如果是自己強制更新的確認，更新版本號
+            if (message.force_update_success && message.version) {
+                Editor.setVersion(message.version);
             }
-            
-            console.log('👥 協作者狀態已更新:', this.getActiveUsers());
-            // 主動更新一次UI
-            this.updateUserList(this.getActiveUsers());
+            return;
         }
 
-        try {
-            // 確保編輯器存在並調用處理方法
-            if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
-                console.log('🔄 調用編輯器處理遠程代碼變更...');
-                window.Editor.handleRemoteCodeChange(message);
-            } else {
-                console.error('❌ 編輯器未找到或方法不存在');
-                console.log('   - Editor 存在:', !!window.Editor);
-                console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
-                
-                // 降級處理：直接更新代碼
-                if (window.Editor && typeof window.Editor.editor?.setValue === 'function') {
-                    console.log('🔄 降級處理：直接設置代碼');
-                    
-                    // 保存當前游標位置和選擇範圍
-                    const editor = window.Editor.editor;
-                    const currentPosition = editor.getCursor();
-                    const currentSelection = editor.getSelection();
-                    
-                    // 更新代碼
-                    editor.setValue(message.code || '');
-                    
-                    // 更新版本號
-                    if (message.version !== undefined) {
-                        window.Editor.codeVersion = message.version;
-                        if (typeof window.Editor.updateVersionDisplay === 'function') {
-                            window.Editor.updateVersionDisplay();
-                        }
-                    }
-                    
-                    // 如果是其他用戶的更新，恢復游標位置和選擇範圍
-                    if (message.userName !== this.currentUser) {
-                        // 確保游標位置在有效範圍內
-                        const totalLines = editor.lineCount();
-                        if (currentPosition.line < totalLines) {
-                            const lineContent = editor.getLine(currentPosition.line);
-                            editor.setCursor({
-                                line: currentPosition.line,
-                                ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
-                            });
-                            
-                            // 如果有選擇範圍，也恢復它
-                            if (currentSelection && currentSelection.length > 0) {
-                                editor.setSelection(
-                                    currentSelection.anchor || currentPosition,
-                                    currentSelection.head || currentPosition
-                                );
-                            }
-                        }
-                    }
-                } else {
-                    throw new Error('無法更新代碼：編輯器不可用');
-                }
-            }
-            
-            // 更新最後遠程變更時間
-            if (window.Editor) {
-                window.Editor.lastRemoteChangeTime = Date.now();
-            }
-            
-            /* 暫時註解協作用戶更新
-            // 更新協作用戶列表
-            if (message.userName && message.userName !== this.currentUser) {
-                if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
-                    window.Editor.updateCollaboratingUsers(message.userName);
-                }
-            }
-            */
-            
-        } catch (error) {
-            console.error('❌ 處理代碼變更時發生錯誤:', error);
-            // 顯示錯誤提示
-            if (window.UI && typeof window.UI.showErrorToast === 'function') {
-                window.UI.showErrorToast('更新代碼時發生錯誤，請重新整理頁面');
-            }
+        // 🟢 修復：調用 handleRemoteCodeChange 而不是 setCode
+        if (window.Editor) {
+            Editor.handleRemoteCodeChange(message);
         }
     }
 
