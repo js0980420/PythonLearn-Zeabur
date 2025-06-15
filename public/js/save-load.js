@@ -10,10 +10,6 @@ class SaveLoadManager {
         
         console.log('💾 SaveLoadManager 初始化');
         // 注意：不在構造函數中載入槽位數據，等待用戶初始化後再載入
-        
-        // 衝突檢測相關
-        this.pendingConflictResolutions = new Map(); // 記錄等待解決衝突的用戶
-        this.isWaitingForConflictResolution = false; // 是否正在等待其他人解決衝突
     }
 
     // 🆕 從本地存儲載入槽位數據（用戶隔離）
@@ -408,7 +404,7 @@ class SaveLoadManager {
     }
 
     // 從最新槽位載入代碼
-    async loadFromLatest() {
+    loadFromLatest() {
         console.log('📂 載入最新版本');
         
         if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
@@ -423,13 +419,9 @@ class SaveLoadManager {
             author: this.currentUser.name
         };
 
-        // 檢查衝突
-        const hasConflict = await this.handleConflicts(loadData.code, 'load', { title: '最新' });
-        if (!hasConflict) {
-            console.log('📂 發送載入請求:', loadData);
-            window.wsManager.sendMessage(loadData);
-            this.showMessage('載入請求已發送...', 'info');
-        }
+        console.log('📂 發送載入請求:', loadData);
+        window.wsManager.sendMessage(loadData);
+        this.showMessage('載入請求已發送...', 'info');
     }
 
     // 保存代碼（供保存按鈕使用）
@@ -987,213 +979,6 @@ class SaveLoadManager {
     // 全域方法
     loadLatestCode() {
         this.loadFromLatest();
-    }
-
-    // 檢查是否有衝突
-    checkForConflicts(newCode, operation = 'load') {
-        if (!window.Editor || !window.wsManager) return false;
-        
-        const currentCode = window.Editor.getCode();
-        if (currentCode === newCode) return false;
-        
-        // 如果當前有未保存的更改，則視為有衝突
-        return currentCode && currentCode.trim() !== '';
-    }
-
-    // 處理衝突情況
-    async handleConflicts(newCode, operation = 'load', metadata = {}) {
-        const hasConflict = this.checkForConflicts(newCode, operation);
-        if (!hasConflict) {
-            // 無衝突，直接應用更改
-            if (window.Editor) {
-                window.Editor.setCode(newCode);
-            }
-            return true;
-        }
-
-        // 獲取房間內的其他用戶
-        const otherUsers = Array.from(window.Editor.collaboratingUsers || [])
-            .filter(user => user !== this.currentUser.name);
-
-        if (otherUsers.length === 0) {
-            // 如果沒有其他用戶，直接應用更改
-            if (window.Editor) {
-                window.Editor.setCode(newCode);
-            }
-            return true;
-        }
-
-        // 向其他用戶發送衝突通知
-        const conflictData = {
-            type: 'code_conflict',
-            operation: operation,
-            newCode: newCode,
-            initiator: this.currentUser.name,
-            metadata: metadata,
-            timestamp: Date.now()
-        };
-
-        window.wsManager.sendMessage(conflictData);
-        
-        // 顯示等待視窗
-        this.showWaitingDialog(otherUsers);
-        
-        // 設置等待狀態
-        this.isWaitingForConflictResolution = true;
-        this.pendingConflictResolutions = new Map(
-            otherUsers.map(user => [user, false])
-        );
-
-        return false;
-    }
-
-    // 顯示等待視窗
-    showWaitingDialog(users) {
-        const modalHTML = `
-            <div class="modal fade" id="waitingConflictModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="waitingConflictModalLabel" aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header bg-info text-white">
-                            <h5 class="modal-title" id="waitingConflictModalLabel">
-                                <i class="fas fa-clock"></i> 等待其他用戶處理衝突
-                            </h5>
-                        </div>
-                        <div class="modal-body">
-                            <div class="d-flex align-items-center mb-3">
-                                <div class="spinner-border text-info me-2" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <span>請等待其他用戶處理衝突...</span>
-                            </div>
-                            <div id="conflictUserList">
-                                ${users.map(user => `
-                                    <div class="d-flex align-items-center mb-2" id="conflict-user-${user}">
-                                        <i class="fas fa-user-circle me-2"></i>
-                                        <span>${user}</span>
-                                        <span class="ms-auto">
-                                            <i class="fas fa-clock text-warning"></i>
-                                        </span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // 移除舊的模態框
-        const existingModal = document.getElementById('waitingConflictModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        // 添加新的模態框
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-        // 顯示模態框
-        const modal = new bootstrap.Modal(document.getElementById('waitingConflictModal'));
-        modal.show();
-    }
-
-    // 顯示衝突解決視窗
-    showConflictResolutionDialog(conflictData) {
-        const modalHTML = `
-            <div class="modal fade" id="conflictResolutionModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="conflictResolutionModalLabel" aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header bg-warning">
-                            <h5 class="modal-title" id="conflictResolutionModalLabel">
-                                <i class="fas fa-exclamation-triangle"></i> 代碼衝突
-                            </h5>
-                        </div>
-                        <div class="modal-body">
-                            <p><strong>${conflictData.initiator}</strong> 正在嘗試 ${conflictData.operation === 'load' ? '載入' : '導入'} 新的代碼。</p>
-                            <p>您有未保存的更改，請選擇如何處理：</p>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-danger" onclick="window.SaveLoadManager.resolveConflict('${conflictData.initiator}', false)">
-                                <i class="fas fa-times"></i> 拒絕更改
-                            </button>
-                            <button type="button" class="btn btn-success" onclick="window.SaveLoadManager.resolveConflict('${conflictData.initiator}', true)">
-                                <i class="fas fa-check"></i> 接受更改
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // 移除舊的模態框
-        const existingModal = document.getElementById('conflictResolutionModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        // 添加新的模態框
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-        // 顯示模態框
-        const modal = new bootstrap.Modal(document.getElementById('conflictResolutionModal'));
-        modal.show();
-    }
-
-    // 解決衝突
-    resolveConflict(initiator, accepted) {
-        // 發送解決結果
-        const resolutionData = {
-            type: 'conflict_resolution',
-            initiator: initiator,
-            resolver: this.currentUser.name,
-            accepted: accepted,
-            timestamp: Date.now()
-        };
-
-        window.wsManager.sendMessage(resolutionData);
-
-        // 關閉衝突解決視窗
-        const modal = bootstrap.Modal.getInstance(document.getElementById('conflictResolutionModal'));
-        if (modal) {
-            modal.hide();
-        }
-    }
-
-    // 處理衝突解決響應
-    handleConflictResolution(message) {
-        if (!this.isWaitingForConflictResolution) return;
-
-        const { resolver, accepted } = message;
-        
-        // 更新用戶狀態
-        if (this.pendingConflictResolutions.has(resolver)) {
-            this.pendingConflictResolutions.set(resolver, true);
-            
-            // 更新等待視窗中的用戶狀態
-            const userElement = document.getElementById(`conflict-user-${resolver}`);
-            if (userElement) {
-                const statusIcon = userElement.querySelector('.ms-auto i');
-                statusIcon.className = `fas fa-${accepted ? 'check text-success' : 'times text-danger'}`;
-            }
-        }
-
-        // 檢查是否所有用戶都已響應
-        const allResolved = Array.from(this.pendingConflictResolutions.values()).every(status => status);
-        if (allResolved) {
-            this.isWaitingForConflictResolution = false;
-            this.pendingConflictResolutions.clear();
-
-            // 關閉等待視窗
-            const modal = bootstrap.Modal.getInstance(document.getElementById('waitingConflictModal'));
-            if (modal) {
-                modal.hide();
-            }
-
-            // 如果所有用戶都接受，應用更改
-            const allAccepted = Array.from(this.pendingConflictResolutions.values()).every(status => status);
-            if (allAccepted && window.Editor) {
-                window.Editor.setCode(this.pendingNewCode);
-            }
-        }
     }
 }
 

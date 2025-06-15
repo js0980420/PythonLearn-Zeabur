@@ -273,16 +273,6 @@ class WebSocketManager {
                     console.warn('⚠️ SaveLoadManager 未就緒，無法處理消息:', message.type);
                 }
                 break;
-            case 'code_conflict':
-                if (window.SaveLoadManager) {
-                    window.SaveLoadManager.showConflictResolutionDialog(message);
-                }
-                break;
-            case 'conflict_resolution':
-                if (window.SaveLoadManager) {
-                    window.SaveLoadManager.handleConflictResolution(message);
-                }
-                break;
             default:
                 console.warn('⚠️ 未知消息類型:', message.type);
         }

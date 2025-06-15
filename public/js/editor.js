@@ -477,24 +477,60 @@ class EditorManager {
     handleFileImport(event) {
         const file = event.target.files[0];
         if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const code = e.target.result;
-            
-            // 檢查衝突
-            if (window.SaveLoadManager) {
-                const hasConflict = await window.SaveLoadManager.handleConflicts(
-                    code,
-                    'import',
-                    { fileName: file.name }
-                );
-                if (!hasConflict) {
-                    this.setCode(code);
-                }
+        
+        // 檢查文件類型
+        const fileName = file.name.toLowerCase();
+        const validExtensions = ['.py', '.txt'];
+        const isValidFile = validExtensions.some(ext => fileName.endsWith(ext)) || 
+                           file.type === 'text/plain' || 
+                           file.type === 'text/x-python';
+        
+        if (!isValidFile) {
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('只支援 .py 和 .txt 檔案');
             } else {
-                this.setCode(code);
+                console.error('只支援 .py 和 .txt 檔案');
             }
+            return;
+        }
+        
+        // 檢查文件大小 (1MB 限制)
+        if (file.size > 1024 * 1024) {
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('檔案大小不能超過 1MB');
+            } else {
+                console.error('檔案大小不能超過 1MB');
+            }
+            return;
+        }
+        
+        // 檢查是否需要覆蓋現有內容
+        if (this.editor.getValue().trim()) {
+            if (!confirm('當前編輯器有內容，是否要覆蓋？')) {
+                // 清除文件輸入，允許重新選擇同一文件
+                event.target.value = '';
+                return;
+            }
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            this.editor.setValue(e.target.result);
+            if (window.UI && typeof window.UI.showSuccessToast === 'function') {
+                window.UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
+            } else {
+                console.log(`檔案 "${file.name}" 載入成功`);
+            }
+            // 清除文件輸入
+            event.target.value = '';
+        };
+        reader.onerror = () => {
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast('檔案讀取失敗');
+            } else {
+                console.error('檔案讀取失敗');
+            }
+            event.target.value = '';
         };
         reader.readAsText(file);
     }
