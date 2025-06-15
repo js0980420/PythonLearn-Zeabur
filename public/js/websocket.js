@@ -4,12 +4,14 @@ class WebSocketManager {
         this.ws = null;
         this.currentUser = null;
         this.currentRoom = null;
+        this.isReconnecting = false;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.messageQueue = [];
         this.heartbeatInterval = null;
-        this.lastHeartbeat = 0;
+        this.lastHeartbeat = Date.now();
+        this.lastReceivedMessage = null;
     }
 
     // 檢查連接狀態
@@ -362,85 +364,49 @@ class WebSocketManager {
 
     // 處理代碼變更
     handleCodeChange(message) {
-        console.log('📨 收到代碼變更消息:', message);
-        console.log('   - 來源用戶:', message.userName);
-        console.log('   - 版本號:', message.version);
-        console.log('   - 代碼長度:', (message.code || '').length);
+        console.log('📝 收到代碼變更:', message);
         
-        try {
-            // 確保編輯器存在並調用處理方法
-            if (window.Editor && typeof window.Editor.handleRemoteCodeChange === 'function') {
-                console.log('🔄 調用編輯器處理遠程代碼變更...');
-                window.Editor.handleRemoteCodeChange(message);
-            } else {
-                console.error('❌ 編輯器未找到或方法不存在');
-                console.log('   - Editor 存在:', !!window.Editor);
-                console.log('   - handleRemoteCodeChange 方法存在:', !!(window.Editor && window.Editor.handleRemoteCodeChange));
+        // 存儲最後收到的消息
+        this.lastReceivedMessage = message;
+        
+        if (window.Editor && window.Editor.editor) {
+            try {
+                const editor = window.Editor.editor;
                 
-                // 降級處理：直接更新代碼
-                if (window.Editor && typeof window.Editor.editor?.setValue === 'function') {
-                    console.log('🔄 降級處理：直接設置代碼');
-                    
-                    // 保存當前游標位置和選擇範圍
-                    const editor = window.Editor.editor;
-                    const currentPosition = editor.getCursor();
-                    const currentSelection = editor.getSelection();
-                    
-                    // 更新代碼
-                    editor.setValue(message.code || '');
-                    
-                    // 更新版本號
-                    if (message.version !== undefined) {
-                        window.Editor.codeVersion = message.version;
-                        if (typeof window.Editor.updateVersionDisplay === 'function') {
-                            window.Editor.updateVersionDisplay();
-                        }
-                    }
-                    
-                    // 如果是其他用戶的更新，恢復游標位置和選擇範圍
-                    if (message.userName !== this.currentUser) {
-                        // 確保游標位置在有效範圍內
-                        const totalLines = editor.lineCount();
-                        if (currentPosition.line < totalLines) {
-                            const lineContent = editor.getLine(currentPosition.line);
-                            editor.setCursor({
-                                line: currentPosition.line,
-                                ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
-                            });
-                            
-                            // 如果有選擇範圍，也恢復它
-                            if (currentSelection && currentSelection.length > 0) {
-                                editor.setSelection(
-                                    currentSelection.anchor || currentPosition,
-                                    currentSelection.head || currentPosition
-                                );
-                            }
-                        }
-                    }
+                // 保存當前游標位置和選擇範圍
+                const currentPosition = editor.getCursor();
+                const currentSelection = editor.listSelections();
+                
+                // 檢查版本並更新代碼
+                if (message.version > window.Editor.codeVersion || message.forceUpdate) {
+                    window.Editor.setCode(message.code, message.version);
+                    console.log(`✅ 代碼已更新到版本 ${message.version}`);
                 } else {
-                    throw new Error('無法更新代碼：編輯器不可用');
+                    console.log(`ℹ️ 忽略舊版本更新: ${message.version} <= ${window.Editor.codeVersion}`);
                 }
-            }
-            
-            // 更新最後遠程變更時間
-            if (window.Editor) {
-                window.Editor.lastRemoteChangeTime = Date.now();
-            }
-            
-            /* 暫時註解協作用戶更新
-            // 更新協作用戶列表
-            if (message.userName && message.userName !== this.currentUser) {
-                if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
-                    window.Editor.updateCollaboratingUsers(message.userName);
+                
+                // 如果是其他用戶的更新，恢復游標位置和選擇範圍
+                if (message.userName !== this.currentUser) {
+                    // 確保游標位置在有效範圍內
+                    const totalLines = editor.lineCount();
+                    if (currentPosition.line < totalLines) {
+                        const lineContent = editor.getLine(currentPosition.line);
+                        editor.setCursor({
+                            line: currentPosition.line,
+                            ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
+                        });
+                        
+                        // 如果有選擇範圍，也恢復它
+                        if (currentSelection && currentSelection.length > 0) {
+                            editor.setSelection(
+                                currentSelection.anchor || currentPosition,
+                                currentSelection.head || currentPosition
+                            );
+                        }
+                    }
                 }
-            }
-            */
-            
-        } catch (error) {
-            console.error('❌ 處理代碼變更時發生錯誤:', error);
-            // 顯示錯誤提示
-            if (window.UI && typeof window.UI.showErrorToast === 'function') {
-                window.UI.showErrorToast('更新代碼時發生錯誤，請重新整理頁面');
+            } catch (error) {
+                console.error('❌ 代碼更新失敗:', error);
             }
         }
     }

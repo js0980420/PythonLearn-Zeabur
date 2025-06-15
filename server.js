@@ -3013,19 +3013,37 @@ function handleCodeChange(ws, message) {
         return;
     }
 
+    // 計算房間內的活躍用戶數
+    const activeUsers = Object.values(room.users)
+        .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+        .length;
+
     // 更新房間代碼
     room.code = message.code;
     room.version = (room.version || 0) + 1;
     
-    // 廣播代碼變更給房間內所有用戶
-    broadcastToRoom(user.roomId, {
+    // 只在房間內有兩人以上時才進行衝突檢測
+    const messageToSend = {
         type: 'code_change',
         code: message.code,
         version: room.version,
         userName: user.name,
         userId: ws.userId,
         timestamp: Date.now()
-    });
+    };
+
+    if (activeUsers >= 2) {
+        // 添加衝突相關信息
+        messageToSend.hasConflictWarning = message.hasConflictWarning;
+        messageToSend.conflictData = {
+            activeUsers: Object.values(room.users)
+                .filter(u => u.ws && u.ws.readyState === WebSocket.OPEN)
+                .map(u => u.userName)
+        };
+    }
+    
+    // 廣播代碼變更給房間內所有用戶
+    broadcastToRoom(user.roomId, messageToSend);
 }
 
 // 🆕 處理衝突通知 - 轉發給目標用戶

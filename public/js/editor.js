@@ -864,31 +864,23 @@ class EditorManager {
         }
     }
 
-    // 🆕 檢查是否需要顯示衝突預警
+    // 檢查是否應該顯示衝突預警
     shouldShowConflictWarning() {
-        // 檢查是否有其他用戶正在活躍編輯
-        const activeUsers = this.getActiveCollaborators();
-        const hasOtherActiveUsers = activeUsers.length > 0;
-        
-        // 檢查最近是否收到其他用戶的代碼變更（30秒內）
-        const recentActivity = this.lastRemoteChangeTime && 
-                              (Date.now() - this.lastRemoteChangeTime) < 30000;
-        
-        console.log(`🔍 衝突預警檢查:`);
-        console.log(`   - 其他活躍用戶: ${activeUsers.length > 0 ? activeUsers.join(', ') : '無'}`);
-        console.log(`   - 最近活動: ${recentActivity ? '是' : '否'}`);
-        
-        return hasOtherActiveUsers || recentActivity;
+        // 只有當服務器發送了衝突數據時才顯示預警
+        const lastMessage = wsManager.lastReceivedMessage;
+        return lastMessage && 
+               lastMessage.type === 'code_change' && 
+               lastMessage.hasConflictWarning && 
+               lastMessage.conflictData && 
+               lastMessage.conflictData.activeUsers && 
+               lastMessage.conflictData.activeUsers.length >= 2;
     }
 
-    // 🆕 獲取衝突預警信息
+    // 獲取衝突預警信息
     getConflictWarningInfo() {
-        const activeUsers = this.getActiveCollaborators();
+        const lastMessage = wsManager.lastReceivedMessage;
         return {
-            activeUsers: activeUsers,
-            lastActivity: this.lastRemoteChangeTime ? 
-                         new Date(this.lastRemoteChangeTime).toLocaleTimeString() : 
-                         '未知'
+            activeUsers: lastMessage.conflictData.activeUsers.filter(user => user !== wsManager.currentUser)
         };
     }
 
