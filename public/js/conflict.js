@@ -4,7 +4,12 @@ class ConflictResolverManager {
         this.conflictData = null;
         this.modal = null;
         this.modalElement = null;
+        this.activeConflicts = new Map();
+        this.warningContainer = null;
+        this.lastConflictTimes = new Map(); // 記錄每行最後的衝突時間
+        this.massiveChangeOperations = new Set(['load', 'import', 'paste', 'cut']); // 大量修改操作類型
         console.log('🔧 ConflictResolverManager 已創建');
+        this.initializeUI();
     }
 
     // 初始化衝突解決器
@@ -36,6 +41,185 @@ class ConflictResolverManager {
             }, 1000);
         } else {
             console.log('✅ ConflictResolver modal element found');
+        }
+    }
+
+    // 初始化 UI
+    initializeUI() {
+        // 創建衝突警告容器
+        this.warningContainer = document.createElement('div');
+        this.warningContainer.id = 'conflictWarning';
+        this.warningContainer.className = 'conflict-warning';
+        document.body.appendChild(this.warningContainer);
+    }
+
+    // 顯示衝突警告
+    showConflictWarning(conflictingUsers, operation = null, lineNumber = null) {
+        if (!this.warningContainer) return;
+        
+        // 檢查是否是大量修改操作
+        const isMassiveChange = operation && this.massiveChangeOperations.has(operation);
+        
+        // 生成衝突鍵值
+        const conflictKey = lineNumber 
+            ? `${lineNumber}-${conflictingUsers.map(u => u.userName).sort().join(',')}`
+            : conflictingUsers.map(u => u.userName).sort().join(',');
+        
+        // 檢查時間限制（對於非大量修改操作）
+        if (!isMassiveChange && lineNumber) {
+            const now = Date.now();
+            const lastTime = this.lastConflictTimes.get(conflictKey) || 0;
+            
+            // 如果同一行的上次衝突警告在一分鐘內，則不顯示
+            if (now - lastTime < 60000) {
+                console.log('⏱️ 忽略頻繁的衝突警告:', {
+                    conflictKey,
+                    timeSinceLastWarning: now - lastTime,
+                    lineNumber,
+                    users: conflictingUsers.map(u => u.userName)
+                });
+                return;
+            }
+            
+            // 更新最後衝突時間
+            this.lastConflictTimes.set(conflictKey, now);
+            
+            // 清理過期的時間記錄
+            for (const [key, time] of this.lastConflictTimes.entries()) {
+                if (now - time > 60000) {
+                    this.lastConflictTimes.delete(key);
+                }
+            }
+        }
+        
+        // 檢查是否已經顯示相同的警告
+        if (this.activeConflicts.has(conflictKey)) {
+            console.log('⚠️ 已存在相同的衝突警告');
+            return;
+        }
+        
+        // 創建警告元素
+        const warningElement = document.createElement('div');
+        warningElement.className = 'alert alert-warning alert-dismissible fade show';
+        warningElement.setAttribute('role', 'alert');
+        
+        const userNames = conflictingUsers.map(user => user.userName).join('、');
+        
+        // 根據操作類型顯示不同的警告訊息
+        let warningMessage = '';
+        if (isMassiveChange) {
+            warningMessage = `<strong>⚠️ 重要修改警告！</strong>
+                <p>用戶 ${userNames} 正在進行大量程式碼修改 (${operation})。</p>`;
+        } else {
+            warningMessage = `<strong>⚠️ 衝突警告！</strong>
+                <p>用戶 ${userNames} 正在編輯${lineNumber ? `第 ${lineNumber} 行附近的` : '相同的'}程式碼區域。</p>`;
+        }
+        
+        warningElement.innerHTML = `
+            <div class="alert-content">
+                ${warningMessage}
+                <div class="btn-group mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-warning accept-changes">
+                        接受變更
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning reject-changes">
+                        拒絕變更
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning share-code">
+                        分享代碼
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning analyze-conflict">
+                        AI 分析
+                    </button>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // 添加事件監聽器
+        warningElement.querySelector('.accept-changes').addEventListener('click', () => {
+            this.handleAcceptChanges(conflictKey);
+        });
+        
+        warningElement.querySelector('.reject-changes').addEventListener('click', () => {
+            this.handleRejectChanges(conflictKey);
+        });
+        
+        warningElement.querySelector('.share-code').addEventListener('click', () => {
+            this.handleShareCode(conflictKey);
+        });
+        
+        warningElement.querySelector('.analyze-conflict').addEventListener('click', () => {
+            this.handleAnalyzeConflict(conflictingUsers);
+        });
+        
+        warningElement.querySelector('.btn-close').addEventListener('click', () => {
+            this.clearConflictWarning(conflictKey);
+        });
+        
+        // 保存警告
+        this.activeConflicts.set(conflictKey, {
+            element: warningElement,
+            users: conflictingUsers,
+            lineNumber: lineNumber,
+            operation: operation,
+            timestamp: Date.now()
+        });
+        
+        // 顯示警告
+        this.warningContainer.appendChild(warningElement);
+        
+        // 自動消失計時器（大量修改操作延長顯示時間）
+        setTimeout(() => {
+            this.clearConflictWarning(conflictKey);
+        }, isMassiveChange ? 60000 : 30000); // 大量修改 60 秒，一般衝突 30 秒
+    }
+
+    // 清除特定衝突警告
+    clearConflictWarning(key) {
+        const conflict = this.activeConflicts.get(key);
+        if (conflict) {
+            const { element } = conflict;
+            element.classList.remove('show');
+            setTimeout(() => {
+                element.remove();
+                this.activeConflicts.delete(key);
+            }, 150);
+        }
+    }
+
+    // 清除所有衝突警告
+    clearAllWarnings() {
+        for (const key of this.activeConflicts.keys()) {
+            this.clearConflictWarning(key);
+        }
+    }
+
+    // 處理接受變更
+    handleAcceptChanges(conflictKey) {
+        console.log('✅ 接受變更:', conflictKey);
+        // TODO: 實現接受變更邏輯
+        this.clearConflictWarning(conflictKey);
+    }
+
+    // 處理拒絕變更
+    handleRejectChanges(conflictKey) {
+        console.log('❌ 拒絕變更:', conflictKey);
+        // TODO: 實現拒絕變更邏輯
+        this.clearConflictWarning(conflictKey);
+    }
+
+    // 處理分享代碼
+    handleShareCode(conflictKey) {
+        console.log('📤 分享代碼:', conflictKey);
+        // TODO: 實現代碼分享邏輯
+    }
+
+    // 處理 AI 分析
+    handleAnalyzeConflict(conflictingUsers) {
+        console.log('🤖 AI 分析衝突:', conflictingUsers);
+        if (window.aiAssistant) {
+            aiAssistant.analyzeConflict(conflictingUsers);
         }
     }
 
@@ -1265,6 +1449,17 @@ class ConflictResolverManager {
         
         localStorage.setItem('conflict_history', JSON.stringify(conflictHistory));
         console.log('✅ 衝突記錄已添加到歷史，總記錄數:', conflictHistory.length);
+    }
+
+    // 檢查衝突
+    checkConflict() {
+        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+            console.error('❌ 無法檢查衝突：WebSocket 未連接');
+            return false;
+        }
+        
+        // 檢查衝突邏輯...
+        return true;
     }
 }
 

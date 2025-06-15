@@ -197,20 +197,19 @@ class ChatManager {
         const message = this.chatInput.value.trim();
         
         console.log(`💬 學生嘗試發送聊天消息: "${message}"`);
-        console.log(`🔗 WebSocket連接狀態: ${wsManager.isConnected()}`);
         
         if (!message) {
             console.log(`❌ 消息為空，取消發送`);
             return;
         }
         
-        if (!wsManager.isConnected()) {
+        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
             console.log(`❌ WebSocket未連接，無法發送消息`);
             return;
         }
         
         console.log(`📤 發送聊天消息到服務器...`);
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'chat_message',
             message: message
         });
@@ -221,13 +220,13 @@ class ChatManager {
 
     // 發送AI回應到聊天室
     sendAIResponseToChat(aiResponse) {
-        if (!aiResponse || !wsManager.isConnected()) return;
+        if (!aiResponse || !window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) return;
         
         // 清理HTML標籤，保留文本內容
         const cleanResponse = this.stripHtmlTags(aiResponse);
         const formattedMessage = `🤖 AI助教回應：\n${cleanResponse}`;
         
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'chat_message',
             message: formattedMessage
         });

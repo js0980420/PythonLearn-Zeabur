@@ -214,16 +214,8 @@ class AIAssistantManager {
 
     // 請求AI分析 - 修改為調用真實API
     requestAnalysis(action) {
-        if (!wsManager.isConnected()) {
-             if (this.responseContainer) {
-                this.responseContainer.innerHTML = '<p class="text-danger p-3 text-center">⚠️ 請先加入房間以使用AI助教功能。</p>';
-             }
-             this.hideShareOptions();
-             return;
-        }
-
-        if (this.isProcessing) {
-            console.log('⏳ AI請求正在處理中，請稍候...');
+        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+            console.error('❌ 無法發送 AI 請求：WebSocket 未連接');
             return;
         }
         
@@ -289,7 +281,7 @@ class AIAssistantManager {
         console.log('🔍 [AI Debug] 發送的代碼內容:', code);
 
         // 發送AI請求到服務器
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'ai_request',
             action: apiAction,
             requestId: requestId,

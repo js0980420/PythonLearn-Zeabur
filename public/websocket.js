@@ -4,87 +4,12 @@ class WebSocketManager {
         this.ws = null;
         this.currentUser = null;
         this.currentRoom = null;
-        this.isConnected = false;
-        this.activeUsers = new Map();
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.messageQueue = [];
         this.heartbeatInterval = null;
-        this.lastHeartbeat = Date.now();
-        console.log('🔧 WebSocketManager 已創建');
-    }
-
-    // 獲取當前房間的活躍用戶列表
-    getActiveUsers() {
-        return Array.from(this.activeUsers.values());
-    }
-
-    // 更新用戶狀態
-    updateUserStatus(userData) {
-        const { userName, isEditing, position } = userData;
-        
-        if (userName === this.currentUser) return;
-        
-        // 更新或添加用戶
-        this.activeUsers.set(userName, {
-            userName,
-            isEditing: isEditing || false,
-            position: position || null,
-            lastActivity: Date.now()
-        });
-        
-        // 通知編輯器更新協作狀態
-        if (window.editorManager) {
-            editorManager.updateCollaboratorStatus(userData);
-        }
-        
-        console.log(`👥 更新用戶狀態: ${userName}, 編輯中: ${isEditing}`);
-    }
-    
-    // 移除用戶
-    removeUser(userName) {
-        if (this.activeUsers.has(userName)) {
-            this.activeUsers.delete(userName);
-            console.log(`👋 用戶離開: ${userName}`);
-            
-            // 清除相關的衝突警告
-            if (window.conflictManager) {
-                conflictManager.clearConflictWarning(userName);
-            }
-        }
-    }
-    
-    // 處理用戶消息
-    handleUserMessage(message) {
-        switch (message.type) {
-            case 'user_join':
-                this.updateUserStatus({
-                    userName: message.userName,
-                    isEditing: false
-                });
-                break;
-                
-            case 'user_leave':
-                this.removeUser(message.userName);
-                break;
-                
-            case 'editing_status':
-                this.updateUserStatus(message);
-                break;
-        }
-    }
-    
-    // 清理非活躍用戶
-    cleanupInactiveUsers() {
-        const now = Date.now();
-        const timeout = 30000; // 30 秒超時
-        
-        for (const [userName, userData] of this.activeUsers) {
-            if (now - userData.lastActivity > timeout) {
-                this.removeUser(userName);
-            }
-        }
+        this.lastHeartbeat = 0;
     }
 
     // 檢查連接狀態
@@ -184,18 +109,13 @@ class WebSocketManager {
 
     // 發送消息
     sendMessage(message) {
-        if (!this.ws) {
-            console.log('📝 WebSocket 未初始化，消息已加入隊列');
-            this.messageQueue.push(message);
-            return;
-        }
-
-        if (this.ws.readyState === WebSocket.OPEN) {
+        if (this.isConnected()) {
             try {
                 this.ws.send(JSON.stringify(message));
                 console.log('📤 發送消息:', message.type);
             } catch (error) {
                 console.error('❌ 發送消息失敗:', error);
+                // 添加到消息隊列以便重連後發送
                 this.messageQueue.push(message);
             }
         } else {
@@ -271,16 +191,6 @@ class WebSocketManager {
                     window.SaveLoadManager.handleMessage(message);
                 } else {
                     console.warn('⚠️ SaveLoadManager 未就緒，無法處理消息:', message.type);
-                }
-                break;
-            case 'code_conflict':
-                if (window.SaveLoadManager) {
-                    window.SaveLoadManager.showConflictResolutionDialog(message);
-                }
-                break;
-            case 'conflict_resolution':
-                if (window.SaveLoadManager) {
-                    window.SaveLoadManager.handleConflictResolution(message);
                 }
                 break;
             default:
@@ -490,20 +400,16 @@ class WebSocketManager {
                     // 如果是其他用戶的更新，恢復游標位置和選擇範圍
                     if (message.userName !== this.currentUser) {
                         // 確保游標位置在有效範圍內
-                        const totalLines = editor.lineCount();
-                        if (currentPosition.line < totalLines) {
-                            const lineContent = editor.getLine(currentPosition.line);
-                            editor.setCursor({
-                                line: currentPosition.line,
-                                ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
-                            });
+                        const lines = editor.session.getLength();
+                        if (currentPosition.row < lines) {
+                            editor.moveCursorTo(
+                                currentPosition.row,
+                                Math.min(currentPosition.column, editor.session.getLine(currentPosition.row).length)
+                            );
                             
                             // 如果有選擇範圍，也恢復它
-                            if (currentSelection && currentSelection.length > 0) {
-                                editor.setSelection(
-                                    currentSelection.anchor || currentPosition,
-                                    currentSelection.head || currentPosition
-                                );
+                            if (!currentSelection.isEmpty()) {
+                                editor.selection.setRange(currentSelection);
                             }
                         }
                     }
@@ -517,14 +423,12 @@ class WebSocketManager {
                 window.Editor.lastRemoteChangeTime = Date.now();
             }
             
-            /* 暫時註解協作用戶更新
             // 更新協作用戶列表
             if (message.userName && message.userName !== this.currentUser) {
                 if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
                     window.Editor.updateCollaboratingUsers(message.userName);
                 }
             }
-            */
             
         } catch (error) {
             console.error('❌ 處理代碼變更時發生錯誤:', error);
@@ -548,10 +452,7 @@ class WebSocketManager {
     handleChatMessage(message) {
         if (window.Chat) {
             const { userName, roomName, message: chatText, isTeacher } = message;
-            console.log('💬 收到聊天消息:', { userName, roomName, chatText, isTeacher });
             window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
-        } else {
-            console.warn('⚠️ Chat 模組未初始化，無法顯示聊天消息');
         }
     }
 
@@ -673,7 +574,6 @@ class WebSocketManager {
                     remoteCode: message.conflictData?.remoteCode || '',
                     localVersion: message.conflictData?.localVersion || 0,
                     remoteVersion: message.conflictData?.remoteVersion || 0,
-                    operation: message.operation || null,
                     changeDetails: message.conflictDetails || {},
                     timestamp: Date.now()
                 };
@@ -685,33 +585,25 @@ class WebSocketManager {
                 // 在聊天室顯示詳細狀態
                 if (window.Chat) {
                     const changeInfo = message.conflictDetails?.changeType || {};
-                    const operationInfo = message.operation ? ` (${message.operation})` : '';
                     window.Chat.addSystemMessage(
                         `⚠️ 協作衝突通知:\n` +
-                        `• ${message.conflictWith} 正在處理您的代碼修改${operationInfo}\n` +
+                        `• ${message.conflictWith} 正在處理您的代碼修改\n` +
                         `• 變更類型: ${changeInfo.description || '未知'}\n` +
                         `• 修改行數: +${changeInfo.addedLines || 0}/-${changeInfo.removedLines || 0}\n` +
                         `• 時間差: ${Math.round((message.conflictDetails?.timeDiff || 0)/1000)}秒\n` +
                         `請等待對方處理或在聊天室討論...`
                     );
                 }
-            }
-        } else {
-            // 其他用戶的衝突處理界面
-            if (window.ConflictResolver) {
-                const conflictInfo = {
-                    ...message,
-                    isSender: false,
-                    operation: message.operation || null
-                };
-                window.ConflictResolver.showConflictModal(
-                    message.localCode || '',
-                    message.remoteCode || '',
-                    message.userName || '其他同學',
-                    message.localVersion || 0,
-                    message.remoteVersion || 0,
-                    message.operation
-                );
+            } else {
+                // 降級處理
+                if (window.UI) {
+                    window.UI.showToast(
+                        '協作衝突',
+                        `${message.conflictWith} 正在處理您的代碼修改，請稍候...`,
+                        'warning',
+                        5000
+                    );
+                }
             }
         }
     }
@@ -843,7 +735,7 @@ class WebSocketManager {
 
     // 處理消息隊列
     processMessageQueue() {
-        while (this.messageQueue.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        while (this.messageQueue.length > 0 && this.isConnected()) {
             const message = this.messageQueue.shift();
             this.sendMessage(message);
         }
@@ -854,7 +746,7 @@ class WebSocketManager {
         this.stopHeartbeat(); // 確保不會重複啟動
         
         this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            if (this.isConnected()) {
                 this.ws.send(JSON.stringify({ type: 'ping' }));
             }
         }, 30000); // 每30秒發送一次心跳
@@ -873,7 +765,7 @@ class WebSocketManager {
 
     // 離開房間
     leaveRoom() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (this.isConnected()) {
             this.sendMessage({
                 type: 'leave_room',
                 room: this.currentRoom
@@ -887,26 +779,6 @@ class WebSocketManager {
         
         this.currentRoom = null;
         console.log('👋 已離開房間');
-    }
-
-    // 發送代碼變更
-    sendCodeChange(code, forced = false, operation = null) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.error('❌ WebSocket 未連接，無法發送代碼變更');
-            return;
-        }
-        
-        const message = {
-            type: 'code_change',
-            code: code,
-            forced: forced,
-            operation: operation,
-            timestamp: Date.now(),
-            version: window.Editor?.codeVersion || 0
-        };
-        
-        this.sendMessage(message);
-        console.log('📤 代碼變更已發送:', { forced, operation });
     }
 }
 
