@@ -208,7 +208,7 @@ class EditorManager {
         const code = this.editor.getValue();
         if (!code) {
             console.log('❌ 無法保存：代碼為空');
-            return;
+                return;
         }
         
         // 發送保存請求
@@ -295,9 +295,9 @@ class EditorManager {
         
         // 發送運行請求
         window.wsManager.sendMessage({
-            type: 'run_code',
+                type: 'run_code',
             code: code
-        });
+            });
         
         console.log('🚀 正在運行代碼...');
     }
@@ -313,7 +313,7 @@ class EditorManager {
         
         this.isApplyingRemoteChange = true;
         try {
-            const currentPosition = this.editor.getCursor();
+                const currentPosition = this.editor.getCursor();
             const currentScrollInfo = this.editor.getScrollInfo();
             
             this.editor.setValue(message.code);
@@ -661,8 +661,8 @@ class EditorManager {
         // 7. 定期狀態監控
         setInterval(() => {
             if (this.isEditing && (Date.now() - this.editStartTime) > 60000) {
-                this.isEditing = false;
-            }
+                    this.isEditing = false;
+                }
         }, 15000);
         
         console.log('✅ 編輯狀態追蹤系統設置完成');
@@ -720,7 +720,7 @@ class EditorManager {
         if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
             console.error('❌ WebSocket 未連接，無法進行 AI 分析');
             UI.showErrorToast('無法連接到服務器，請稍後再試');
-            return;
+                return;
         }
 
         const currentCode = this.editor.getValue();
