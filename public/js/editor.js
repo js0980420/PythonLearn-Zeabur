@@ -180,13 +180,9 @@ class EditorManager {
     // 自動保存代碼
     setupAutoSave() {
         setInterval(() => {
-            if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
-                console.log('❌ 自動保存：WebSocket 未連接');
-                return;
-            }
-            
-            if (this.editor && this.isEditing && (Date.now() - this.lastAutoSave) > 30000) {
-                this.saveCode(true);
+            if (wsManager.isConnected() && this.editor && this.isEditing && 
+                Date.now() - this.lastAutoSave > 10000) { // 10秒無操作後才自動保存
+                this.saveCode(true); // 標記為自動保存
             }
         }, 30000);
         
@@ -195,8 +191,12 @@ class EditorManager {
 
     // 保存代碼
     saveCode(isAutoSave = false) {
-        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
-            console.log('❌ 無法保存：WebSocket 未連接');
+        if (!wsManager.isConnected()) {
+            if (window.UI && typeof window.UI.showErrorToast === 'function') {
+                window.UI.showErrorToast("無法保存代碼：請先加入房間。");
+            } else {
+                console.error("無法保存代碼：請先加入房間。");
+            }
             return;
         }
         
@@ -212,13 +212,14 @@ class EditorManager {
         }
         
         // 發送保存請求
-        window.wsManager.sendMessage({
+        wsManager.sendMessage({
             type: 'save_code',
             code: code,
             isAutoSave: isAutoSave
         });
         
         this.lastAutoSave = Date.now();
+        this.updateVersionDisplay();
         console.log(`✅ 代碼已${isAutoSave ? '自動' : '手動'}保存`);
     }
 
@@ -256,6 +257,7 @@ class EditorManager {
         if (index >= 0 && index < this.codeHistory.length) {
             const historyItem = this.codeHistory[index];
             this.editor.setValue(historyItem.code);
+            this.sendCodeChange(true);
             if (window.UI && typeof window.UI.showSuccessToast === 'function') {
                 window.UI.showSuccessToast(`已載入 ${historyItem.name} 的代碼版本`);
             } else {
@@ -266,13 +268,13 @@ class EditorManager {
 
     // 載入代碼
     loadCode(loadType = 'latest') {
-        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+        if (!wsManager.isConnected()) {
             console.log('❌ 無法載入：WebSocket 未連接');
             return;
         }
         
         // 發送載入請求
-        window.wsManager.sendMessage({
+        wsManager.sendMessage({
             type: 'load_code',
             loadType: loadType
         });
@@ -282,22 +284,25 @@ class EditorManager {
 
     // 運行代碼
     runCode() {
-        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+        const code = this.editor.getValue().trim();
+        
+        if (!wsManager.isConnected()) {
             console.log('❌ 無法運行：WebSocket 未連接');
             return;
         }
         
-        const code = this.editor.getValue();
         if (!code) {
             console.log('❌ 無法運行：代碼為空');
             return;
         }
         
-        // 發送運行請求
-        window.wsManager.sendMessage({
-                type: 'run_code',
+        this.showOutput('正在運行代碼...', 'info');
+        
+        // 發送運行請求到服務器
+        wsManager.sendMessage({
+            type: 'run_code',
             code: code
-            });
+        });
         
         console.log('🚀 正在運行代碼...');
     }
@@ -513,9 +518,8 @@ class EditorManager {
         
         const reader = new FileReader();
         reader.onload = (e) => {
-            // 更新代碼並觸發變更事件
-            this.handleImport(e.target.result);
-            
+            this.editor.setValue(e.target.result);
+            this.sendCodeChange(true);
             if (window.UI && typeof window.UI.showSuccessToast === 'function') {
                 window.UI.showSuccessToast(`檔案 "${file.name}" 載入成功`);
             } else {
@@ -688,7 +692,7 @@ class EditorManager {
 
     // 發送代碼變更
     sendCodeChange(forceUpdate = false, operation = null) {
-        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN || !this.editor) {
+        if (!wsManager.isConnected() || !this.editor) {
             console.log('❌ WebSocket 未連接或編輯器未初始化，無法發送代碼變更');
             return;
         }
@@ -699,7 +703,7 @@ class EditorManager {
         console.log(`📤 準備發送代碼變更 - 強制發送: ${forceUpdate}, 用戶: ${window.wsManager.currentUser}, 操作類型: ${operation || '一般編輯'}`);
         
         // 發送代碼變更到服務器
-        window.wsManager.sendMessage({
+        wsManager.sendMessage({
             type: 'code_change',
             code: code,
             forced: forceUpdate,
@@ -720,7 +724,7 @@ class EditorManager {
 
     // 使用 AI 分析潛在衝突
     async analyzeConflictWithAI() {
-        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+        if (!wsManager.isConnected()) {
             console.error('❌ WebSocket 未連接，無法進行 AI 分析');
             UI.showErrorToast('無法連接到服務器，請稍後再試');
                 return;
@@ -738,7 +742,7 @@ class EditorManager {
         };
 
         try {
-            const response = await window.wsManager.sendMessage(message);
+            const response = await wsManager.sendMessage(message);
             // AI 分析結果會通過 WebSocket 返回
             console.log('✅ AI 分析請求已發送');
         } catch (error) {
@@ -852,9 +856,9 @@ class EditorManager {
 
     // 檢查代碼衝突
     checkConflicts(change, operation = null) {
-        if (!this.editor || !window.wsManager) return;
+        if (!this.editor || !wsManager.isConnected()) return;
         
-        const activeUsers = window.wsManager.getActiveUsers();
+        const activeUsers = wsManager.getActiveUsers();
         
         if (activeUsers.length <= 1) {
             return;
@@ -862,7 +866,7 @@ class EditorManager {
         
         const from = change.from.line;
         const to = change.to.line;
-        const currentUser = window.wsManager.currentUser;
+        const currentUser = wsManager.currentUser;
 
         const conflictingUsers = [];
         activeUsers.forEach(user => {
@@ -939,12 +943,12 @@ class EditorManager {
         
         // 監聽游標移動
         this.editor.on('cursorActivity', () => {
-            if (window.wsManager && window.wsManager.ws && window.wsManager.ws.readyState === WebSocket.OPEN) {
+            if (wsManager.isConnected() && wsManager.ws && wsManager.ws.readyState === WebSocket.OPEN) {
                 const cursor = this.editor.getCursor();
-                window.wsManager.sendMessage({
+                wsManager.sendMessage({
                     type: 'cursor_change',
                     position: cursor,
-                    room: window.wsManager.currentRoom
+                    room: wsManager.currentRoom
                 });
             }
         });
@@ -952,22 +956,22 @@ class EditorManager {
         // 監聽焦點變化
         this.editor.on('focus', () => {
             this.isEditing = true;
-            if (window.wsManager && window.wsManager.ws && window.wsManager.ws.readyState === WebSocket.OPEN) {
-                window.wsManager.sendMessage({
+            if (wsManager.isConnected() && wsManager.ws && wsManager.ws.readyState === WebSocket.OPEN) {
+                wsManager.sendMessage({
                     type: 'editor_focus',
                     focused: true,
-                    room: window.wsManager.currentRoom
+                    room: wsManager.currentRoom
                 });
             }
         });
         
         this.editor.on('blur', () => {
             this.isEditing = false;
-            if (window.wsManager && window.wsManager.ws && window.wsManager.ws.readyState === WebSocket.OPEN) {
-                window.wsManager.sendMessage({
+            if (wsManager.isConnected() && wsManager.ws && wsManager.ws.readyState === WebSocket.OPEN) {
+                wsManager.sendMessage({
                     type: 'editor_focus',
                     focused: false,
-                    room: window.wsManager.currentRoom
+                    room: wsManager.currentRoom
                 });
             }
         });
