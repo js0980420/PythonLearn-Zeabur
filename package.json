@@ -12,6 +12,8 @@
     "postinstall": "echo 'Dependencies installed successfully'",
     "test": "playwright test tests/e2e/basic.spec.js",
     "test-mcp": "node mcp-test.js",
+    "test-port": "node tests/integration/test_port_configuration.js",
+    "setup-db": "node setup_database.js",
     "clean": "node -e \"console.log('🧹 清理備份文件...'); const fs = require('fs'); const path = require('path'); const files = fs.readdirSync('.'); files.filter(f => f.startsWith('data_backup_')).forEach(f => { fs.unlinkSync(f); console.log('🗑️ 已刪除:', f); }); console.log('✅ 清理完成');\"",
     "backup": "node -e \"const fs = require('fs'); const src = 'data_backup.json'; if(fs.existsSync(src)) { const dest = 'manual_backup_' + new Date().toISOString().replace(/[:.]/g, '-') + '.json'; fs.copyFileSync(src, dest); console.log('💾 手動備份已創建:', dest); } else { console.log('❌ 找不到備份文件'); }\""
   },

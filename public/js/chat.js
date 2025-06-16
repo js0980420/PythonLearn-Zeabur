@@ -197,20 +197,19 @@ class ChatManager {
         const message = this.chatInput.value.trim();
         
         console.log(`💬 學生嘗試發送聊天消息: "${message}"`);
-        console.log(`🔗 WebSocket連接狀態: ${wsManager.isConnected()}`);
         
         if (!message) {
             console.log(`❌ 消息為空，取消發送`);
             return;
         }
         
-        if (!wsManager.isConnected()) {
+        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
             console.log(`❌ WebSocket未連接，無法發送消息`);
             return;
         }
         
         console.log(`📤 發送聊天消息到服務器...`);
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'chat_message',
             message: message
         });
@@ -221,13 +220,13 @@ class ChatManager {
 
     // 發送AI回應到聊天室
     sendAIResponseToChat(aiResponse) {
-        if (!aiResponse || !wsManager.isConnected()) return;
+        if (!aiResponse || !window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) return;
         
         // 清理HTML標籤，保留文本內容
         const cleanResponse = this.stripHtmlTags(aiResponse);
         const formattedMessage = `🤖 AI助教回應：\n${cleanResponse}`;
         
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'chat_message',
             message: formattedMessage
         });
@@ -264,11 +263,13 @@ class ChatManager {
     }
 
     // 添加聊天消息
-    addMessage(userName, message, isSystem = false, isTeacher = false) {
+    addMessage(userName, message, isSystem = false, isTeacher = false, roomName = '') {
         if (!this.chatContainer) {
             console.error('❌ 聊天容器未初始化');
             return;
         }
+        
+        console.log(`💬 添加聊天消息:`, { userName, isSystem, isTeacher, roomName });
         
         const messageDiv = document.createElement('div');
         let messageClass = 'chat-message';
@@ -290,11 +291,29 @@ class ChatManager {
         } else {
             // 為教師消息添加特殊標識
             const userDisplay = isTeacher ? `👨‍🏫 ${userName}` : userName;
-            messageDiv.innerHTML = `<strong>${userDisplay}:</strong> ${this.escapeHtml(message)}`;
+            const roomDisplay = roomName ? `<span class="chat-message-room">[${roomName}]</span> ` : '';
+            const timeString = new Date().toLocaleTimeString('zh-TW', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="chat-message-header">
+                    <span class="chat-message-user">${userDisplay}</span>
+                    ${roomDisplay}
+                    <span class="chat-message-time">${timeString}</span>
+                </div>
+                <div class="chat-message-content">${this.escapeHtml(message)}</div>
+            `;
         }
         
         this.chatContainer.appendChild(messageDiv);
         this.scrollToBottom();
+        
+        // 如果是教師消息，播放提示音
+        if (isTeacher) {
+            this.playNotificationSound();
+        }
     }
 
     // 設置聊天消息樣式
@@ -407,6 +426,31 @@ class ChatManager {
     clearChat() {
         if (this.chatContainer) {
             this.chatContainer.innerHTML = '';
+        }
+    }
+
+    // 播放提示音
+    playNotificationSound() {
+        try {
+            if (window.AudioContext || window.webkitAudioContext) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            }
+        } catch (error) {
+            console.log('🔇 無法播放提示音:', error.message);
         }
     }
 }

@@ -13,6 +13,9 @@ yarn-error.log*
 # AI 配置檔案（包含敏感資料，不上傳）
 ai_config.json
 
+# 數據庫配置檔案（包含敏感資料，不上傳）
+db_config.json
+
 # 日誌檔案
 *.log
 logs/
@@ -47,6 +50,7 @@ desktop.ini
 
 # 規則檔案（僅本地使用）
 .cursor/
+.cursorrules
 
 # Docker 相關
 Dockerfile
@@ -70,4 +74,78 @@ config/
 !src/config/
 
 # 環境變數
-.env.*.local 
+.env.*.local
+
+# 敏感資料
+.env
+.env.local
+.env.production
+
+# 測試檔案
+test_*.html
+test_*.js
+tests/
+test-results/
+playwright-report/
+*.spec.js
+*.test.js
+
+# 文檔檔案
+*.md
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE.md
+docs/
+
+# MySQL 修復腳本
+*mysql*.bat
+*mysql*.ps1
+*mysql*.sql
+setup_database.js
+workbench_helper.sql
+
+# 臨時檔案
+*.log
+*.tmp
+*.bak
+*.orig
+quick_test.bat
+emergency_*.bat
+final_*.bat
+fix_*.bat
+fix_*.ps1
+force_*.bat
+reset_*.bat
+reset_*.ps1
+stable_*.bat
+ultimate_*.bat
+use_*.bat
+verify_*.bat
+simple_*.bat
+*.png
+*.jpg
+*.jpeg
+
+# 開發工具
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 作業系統
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 建構檔案
+dist/
+build/
+out/
+
+# 其他
+bin/
+*.zip
+*.tar.gz
+package-lock.json 

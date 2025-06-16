@@ -6,8 +6,9 @@ services:
     environment:
       NODE_ENV: production
       MAX_CONCURRENT_USERS: 50
-      MAX_ROOMS: 12
-      MAX_USERS_PER_ROOM: 4
+      MAX_ROOMS: 20
+      MAX_USERS_PER_ROOM: 5
+      MAX_CONNECTIONS: 60
       WEBSOCKET_TIMEOUT: 300000
       AUTO_SAVE_INTERVAL: 180000
       CLEANUP_INTERVAL: 300000
@@ -18,6 +19,12 @@ services:
       OPENAI_MAX_TOKENS: 2000
       OPENAI_TEMPERATURE: 0.3
       OPENAI_TIMEOUT: 30000
+      ENABLED_AI_FUNCTIONS: "true"
+      # MySQL 數據庫配置 (需要在Zeabur控制台設定實際值)
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_USER: ${MYSQL_USERNAME}
     build:
       commands:
         - npm install --production --no-optional

@@ -4,29 +4,86 @@ class WebSocketManager {
         this.ws = null;
         this.currentUser = null;
         this.currentRoom = null;
+        this.isConnected = false;
+        this.activeUsers = new Map();
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.messageQueue = [];
         this.heartbeatInterval = null;
-        this.connectionTimeout = null;
-        this.isReconnecting = false;
+        this.lastHeartbeat = Date.now();
+        console.log('🔧 WebSocketManager 已創建');
+    }
+
+    // 獲取當前房間的活躍用戶列表
+    getActiveUsers() {
+        return Array.from(this.activeUsers.values());
+    }
+
+    // 更新用戶狀態
+    updateUserStatus(userData) {
+        const { userName, isEditing, position } = userData;
         
-        // 確保在建構時初始化全局實例
-        if (!window.wsManager) {
-            window.wsManager = this;
+        if (userName === this.currentUser) return;
+        
+        // 更新或添加用戶
+        this.activeUsers.set(userName, {
+            userName,
+            isEditing: isEditing || false,
+            position: position || null,
+            lastActivity: Date.now()
+        });
+        
+        // 通知編輯器更新協作狀態
+        if (window.editorManager) {
+            editorManager.updateCollaboratorStatus(userData);
         }
         
-        // 等待 UI 管理器初始化
-        this.waitForUI();
+        console.log(`👥 更新用戶狀態: ${userName}, 編輯中: ${isEditing}`);
     }
     
-    // 等待 UI 管理器初始化
-    async waitForUI() {
-        if (!window.UI) {
-            console.log('⏳ 等待 UI 管理器初始化...');
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await this.waitForUI();
+    // 移除用戶
+    removeUser(userName) {
+        if (this.activeUsers.has(userName)) {
+            this.activeUsers.delete(userName);
+            console.log(`👋 用戶離開: ${userName}`);
+            
+            // 清除相關的衝突警告
+            if (window.conflictManager) {
+                conflictManager.clearConflictWarning(userName);
+            }
+        }
+    }
+    
+    // 處理用戶消息
+    handleUserMessage(message) {
+        switch (message.type) {
+            case 'user_join':
+                this.updateUserStatus({
+                    userName: message.userName,
+                    isEditing: false
+                });
+                break;
+                
+            case 'user_leave':
+                this.removeUser(message.userName);
+                break;
+                
+            case 'editing_status':
+                this.updateUserStatus(message);
+                break;
+        }
+    }
+    
+    // 清理非活躍用戶
+    cleanupInactiveUsers() {
+        const now = Date.now();
+        const timeout = 30000; // 30 秒超時
+        
+        for (const [userName, userData] of this.activeUsers) {
+            if (now - userData.lastActivity > timeout) {
+                this.removeUser(userName);
+            }
         }
     }
 
@@ -37,18 +94,12 @@ class WebSocketManager {
 
     // 建立 WebSocket 連接
     connect(roomName, userName) {
-        // 防止重複連接
-        if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-            console.log('⚠️ 正在連接中，請稍候...');
-            return;
-        }
-
         this.currentUser = userName;
         this.currentRoom = roomName;
         
         // 智能檢測 WebSocket URL
         let wsUrl;
-        try {
+        
         // 檢查是否為本地開發環境
         const isLocalhost = window.location.hostname === 'localhost' || 
                            window.location.hostname === '127.0.0.1' || 
@@ -56,43 +107,27 @@ class WebSocketManager {
         
         if (isLocalhost) {
             console.log('🏠 檢測到本地開發環境');
-            // 確保使用正確的端口
-            const port = window.location.port || '8080';
-            wsUrl = `ws://localhost:${port}`;
+            wsUrl = `ws://${window.location.hostname}:${window.location.port || 3000}`;
         } else {
+            // 雲端環境（如 Zeabur）
             console.log('☁️ 檢測到雲端環境');
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             wsUrl = `${protocol}//${window.location.host}`;
         }
         
-            console.log(`🔌 準備連接到: ${wsUrl}`);
-            console.log(`👤 用戶資訊: ${userName} @ ${roomName}`);
-            
-            // 如果已經有連接，先關閉它
-            if (this.ws) {
-                console.log('🔄 關閉現有連接...');
-                this.ws.close();
-                this.ws = null;
-            }
-            
-            // 創建新的 WebSocket 連接
+        console.log(`🔌 嘗試連接到 WebSocket: ${wsUrl}`);
+        console.log(`👤 用戶: ${userName}, 🏠 房間: ${roomName}`);
+        
+        try {
         this.ws = new WebSocket(wsUrl);
-            console.log('📡 WebSocket 實例已創建');
-            
-            // 設置連接超時
-            const connectionTimeout = setTimeout(() => {
-                if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-                    console.log('❌ 連接超時，正在重試...');
-                    this.ws.close();
-                    this.handleReconnection();
-                }
-            }, 5000);
-            
-            // 連接成功
+
         this.ws.onopen = () => {
-                clearTimeout(connectionTimeout);
-                console.log('✅ WebSocket 連接成功!');
+            console.log('✅ WebSocket 連接成功到服務器!');
+            console.log(`📍 連接地址: ${wsUrl}`);
             this.reconnectAttempts = 0;
+                
+                // 啟動心跳
+                this.startHeartbeat();
                 
                 // 發送加入房間請求
             this.sendMessage({
@@ -101,379 +136,333 @@ class WebSocketManager {
                     userName: userName
             });
 
-                // 啟動心跳
-                this.startHeartbeat();
-                
-                // 處理未發送的消息
+                // 處理消息隊列
             this.processMessageQueue();
                 
-                // 更新UI狀態
-                if (window.UI && typeof window.UI.showSuccessToast === 'function') {
-                    window.UI.showSuccessToast('已連接到服務器');
+                // 觸發連接成功事件
+                if (window.onWebSocketConnected) {
+                    window.onWebSocketConnected();
                 }
-            };
-            
-            // 接收消息
+        };
+
         this.ws.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
-                    console.log('📨 收到消息:', message.type);
                 this.handleMessage(message);
             } catch (error) {
-                    console.error('❌ 解析消息失敗:', error);
+                    console.error('❌ 解析消息失敗:', error, event.data);
             }
         };
 
-            // 連接關閉
         this.ws.onclose = (event) => {
-                clearTimeout(connectionTimeout);
-                console.log(`🔌 連接關閉 [${event.code}]`);
-                this.cleanup();
+                console.log(`🔌 WebSocket 連接關閉: ${event.code} - ${event.reason}`);
+                this.stopHeartbeat();
                 
-                // 非正常關閉才重連
-                if (event.code !== 1000) {
-                    this.handleReconnection();
-                }
-                
-                // 更新UI狀態
-                if (window.UI && typeof window.UI.showWarningToast === 'function') {
-                    window.UI.showWarningToast('與服務器的連接已斷開');
+                // 嘗試重連
+                if (this.reconnectAttempts < this.maxReconnectAttempts && event.code !== 1000) {
+                    this.reconnectAttempts++;
+                    console.log(`🔄 嘗試重連 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+                    setTimeout(() => {
+                        this.connect(roomName, userName);
+                    }, this.reconnectDelay * this.reconnectAttempts);
+                } else {
+                    console.log('❌ 重連次數已達上限或正常關閉');
+                    if (window.onWebSocketDisconnected) {
+                        window.onWebSocketDisconnected();
+                    }
                 }
             };
-            
-            // 連接錯誤
+
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket 錯誤:', error);
-                // 不在這裡處理重連，讓 onclose 處理
             };
 
         } catch (error) {
-            console.error('❌ 建立連接時發生錯誤:', error);
-            this.handleReconnection();
-        }
-    }
-    
-    // 清理資源
-    cleanup() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-        
-        if (this.ws) {
-            this.ws.onclose = null; // 防止重複觸發
-            this.ws.onerror = null;
-            this.ws.onmessage = null;
-            this.ws.onopen = null;
-            
-            if (this.ws.readyState === WebSocket.OPEN) {
-                this.ws.close();
-            }
-            this.ws = null;
-        }
-    }
-    
-    // 處理重連
-    handleReconnection() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.log('❌ 重連次數已達上限');
-            if (window.UI && typeof window.UI.showErrorToast === 'function') {
-                window.UI.showErrorToast('無法連接到服務器，請刷新頁面重試');
-            }
-            return;
-        }
-        
-        this.reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
-        
-        console.log(`🔄 準備第 ${this.reconnectAttempts} 次重連，等待 ${delay}ms...`);
-        
-        if (window.UI && typeof window.UI.showInfoToast === 'function') {
-            window.UI.showInfoToast(`正在重新連接 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        }
-        
-        setTimeout(() => {
-            if (this.currentRoom && this.currentUser) {
-                this.connect(this.currentRoom, this.currentUser);
-            }
-        }, delay);
-    }
-    
-    // 更新連接狀態UI
-    updateConnectionStatus(isConnected, message = '') {
-        const statusElement = document.getElementById('connectionStatus');
-        if (statusElement) {
-            statusElement.className = isConnected ? 'connected' : 'disconnected';
-            statusElement.textContent = isConnected ? '已連接' : (message || '未連接');
-        }
-        
-        // 更新在線用戶顯示
-        const onlineUsersElement = document.getElementById('onlineUsers');
-        if (onlineUsersElement) {
-            onlineUsersElement.style.opacity = isConnected ? '1' : '0.5';
-        }
-    }
-    
-    // 更新在線用戶列表
-    updateUserList(users) {
-        const userListElement = document.getElementById('userList');
-        if (!userListElement) return;
-        
-        userListElement.innerHTML = '';
-        users.forEach(user => {
-            const userElement = document.createElement('div');
-            userElement.className = 'user-item';
-            userElement.textContent = user.name;
-            if (user.name === this.currentUser) {
-                userElement.classList.add('current-user');
-            }
-            userListElement.appendChild(userElement);
-        });
-        
-        // 更新用戶計數
-        const userCountElement = document.getElementById('userCount');
-        if (userCountElement) {
-            userCountElement.textContent = users.length;
-        }
-    }
-    
-    // 開始心跳
-    startHeartbeat() {
-        this.stopHeartbeat();
-        this.heartbeatInterval = setInterval(() => {
-            if (this.isConnected()) {
-                this.sendMessage({ type: 'ping' });
-            }
-        }, 20000);
-    }
-    
-    // 停止心跳
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
+            console.error('❌ 建立 WebSocket 連接失敗:', error);
         }
     }
 
     // 發送消息
     sendMessage(message) {
-        if (this.isConnected()) {
+        if (!this.ws) {
+            console.log('📝 WebSocket 未初始化，消息已加入隊列');
+            this.messageQueue.push(message);
+            return;
+        }
+
+        if (this.ws.readyState === WebSocket.OPEN) {
             try {
                 this.ws.send(JSON.stringify(message));
+                console.log('📤 發送消息:', message.type);
             } catch (error) {
                 console.error('❌ 發送消息失敗:', error);
                 this.messageQueue.push(message);
             }
         } else {
+            console.log('📝 WebSocket 未連接，消息已加入隊列');
             this.messageQueue.push(message);
         }
     }
 
-    // 處理消息
+    // 處理收到的消息
     handleMessage(message) {
         console.log('📨 收到消息:', message.type);
         
-        // 確保 UI 管理器已初始化
-        if (!window.UI) {
-            console.error('❌ UI 管理器尚未初始化');
-            return;
-        }
-        
         switch (message.type) {
             case 'room_joined':
-                console.log('✅ 成功加入房間:', message);
-                // 更新在線用戶列表
-                if (message.users && Array.isArray(message.users)) {
-                    window.UI.updateOnlineUsers(message.users);
-                }
+                this.handleRoomJoined(message);
                 break;
-            
+            case 'join_room_error':
+                this.handleJoinRoomError(message);
+                break;
             case 'user_joined':
-                console.log('👋 新用戶加入:', message.user);
+            case 'user_reconnected':
                 this.handleUserJoined(message);
                 break;
-            
             case 'user_left':
-                console.log('👋 用戶離開:', message);
                 this.handleUserLeft(message);
                 break;
-            
             case 'code_change':
-                console.log('📝 收到代碼變更:', message);
                 this.handleCodeChange(message);
                 break;
-            
+            case 'cursor_changed':
+                this.handleCursorChange(message);
+                break;
             case 'chat_message':
-                console.log('💬 收到聊天消息:', message);
                 this.handleChatMessage(message);
                 break;
-            
-            case 'error':
-                console.error('❌ 收到錯誤消息:', message);
-                this.handleError(message);
+            case 'ai_response':
+                this.handleAIResponse(message);
                 break;
-            
-            case 'pong':
-                // 心跳回應，不需要處理
+            case 'code_execution_result':
+                this.handleCodeExecutionResult(message);
                 break;
-            
+            case 'conflict_notification':
+                this.handleConflictNotification(message);
+                break;
+            case 'teacher_broadcast':
+                this.handleTeacherBroadcast(message);
+                break;
+            case 'notification_sent':
+                console.log('📧 衝突通知已發送確認:', message);
+                // 可以在這裡添加用戶反饋，例如顯示"通知已發送"的提示
+                if (window.UI && typeof window.UI.showInfoToast === 'function') {
+                    window.UI.showInfoToast('衝突通知已發送給對方');
+                }
+                break;
+            case 'save_success':
+                 window.uiManager.showToast(message.isAutoSave ? '✅ 已自動保存' : '✅ 保存成功', 'success');
+                if(window.editorManager) {
+                    window.editorManager.updateHistoryUI();
+                }
+                break;
+            case 'save_error':
+                 window.uiManager.showToast(`❌ 保存失敗: ${message.error}`, 'error');
+                break;
+            case 'load_success':
+                 window.editorManager.setCode(message.code, message.version, 'load');
+                 window.uiManager.showToast('✅ 代碼載入成功', 'success');
+                break;
+            case 'load_error':
+                 window.uiManager.showToast(`❌ 載入失敗: ${message.error}`, 'error');
+                break;
+            case 'history_updated':
+                if (window.editorManager) {
+                    window.editorManager.updateHistoryUI(message.history);
+                }
+                break;
             default:
-                console.warn('⚠️ 未知消息類型:', message.type);
+                console.warn('未知消息類型:', message.type);
         }
     }
 
-    // 處理加入房間成功
+    handleJoinRoomError(message) {
+        window.uiManager.showToast(`❌ 加入房間失敗: ${message.error}`, 'error');
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 2000);
+    }
+
+    // 處理房間加入成功
     handleRoomJoined(message) {
-        console.log('✅ 成功加入房間:', message);
-        this.updateUserList(message.users);
+        console.log('✅ 房間加入成功:', message);
+        this.isConnected = true;
+
+        const { room, users, history } = message.data;
+
+        // 更新房間和用戶信息
+        this.updateRoomInfo(room.id, users);
         
-        // 更新房間信息
-        const roomNameElement = document.getElementById('roomName');
-        if (roomNameElement) {
-            roomNameElement.textContent = message.roomId;
+        // 更新用戶列表
+        this.activeUsers = new Map(users.map(u => [u.userName, u]));
+        window.uiManager.updateUserList(this.getActiveUsers());
+
+        // 設置初始代碼
+        if (window.editorManager && room.code) {
+            console.log('✅ 房間加入成功，正在設置初始代碼...');
+            // 初始加入不觸發廣播
+            window.editorManager.setCode(room.code, room.version, 'join');
+        }
+
+        // 載入聊天記錄
+        if (window.chatManager && room.chatHistory) {
+            window.chatManager.loadHistory(room.chatHistory);
         }
         
-        // 顯示歡迎消息
-        if (window.chatManager) {
-            window.chatManager.addSystemMessage(`歡迎 ${message.userName} 加入房間！`);
+        // 更新歷史版本下拉菜單
+        if (window.editorManager && history) {
+            window.editorManager.updateHistoryUI(history);
         }
+        
+        window.uiManager.showToast(`✅ 已加入房間: ${room.id}`, 'success');
     }
 
-    // 處理用戶加入
+    // 處理新用戶加入
     handleUserJoined(message) {
-        if (!window.UI) return;
-        
-        console.log('👋 處理用戶加入:', message);
-        const users = window.UI.getOnlineUsers() || [];
-        users.push(message.user);
-        window.UI.updateOnlineUsers(users);
+        console.log(`👋 ${message.userName} 已加入房間`);
+        this.activeUsers.set(message.userName, {
+            userName: message.userName,
+            isEditing: false,
+            position: null,
+            lastActivity: Date.now()
+        });
+        window.uiManager.updateUserList(this.getActiveUsers());
+        window.uiManager.showToast(`${message.userName} 加入了房間`, 'info');
     }
 
     // 處理用戶離開
     handleUserLeft(message) {
-        if (!window.UI) return;
-        
-        console.log('👋 處理用戶離開:', message);
-        const users = window.UI.getOnlineUsers() || [];
-        const updatedUsers = users.filter(user => 
-            user.id !== message.userId && 
-            user.userName !== message.userName
-        );
-        window.UI.updateOnlineUsers(updatedUsers);
-    }
-    
-    // 處理錯誤
-    handleError(message) {
-        const errorMessage = message.error || message.message || '發生未知錯誤';
-        console.error('❌ 收到錯誤:', errorMessage);
-        
-        // 顯示錯誤提示
-        if (window.UI && typeof window.UI.showErrorToast === 'function') {
-            window.UI.showErrorToast(errorMessage);
-        }
-        
-        // 添加系統錯誤消息到聊天室
-        if (window.chatManager && typeof window.chatManager.addSystemMessage === 'function') {
-            window.chatManager.addSystemMessage(`❌ ${errorMessage}`);
-        }
-    }
-
-    // 處理聊天消息
-    async handleChatMessage(message) {
-        console.log('💬 處理聊天消息:', message);
-        
-        if (!window.Chat || !window.Chat.initialized) {
-            console.error('❌ 聊天系統未初始化');
-            return;
-        }
-        
-        window.Chat.addMessage(message.userName, message.message);
+        console.log(`👋 ${message.userName} 已離開房間`);
+        this.activeUsers.delete(message.userName);
+        window.uiManager.updateUserList(this.getActiveUsers());
+        window.uiManager.showToast(`${message.userName} 離開了房間`, 'info');
     }
 
     // 處理代碼變更
     handleCodeChange(message) {
-        if (!window.Editor) {
-            console.error('❌ 編輯器未初始化');
+        if (!window.editorManager) return;
+        
+        const { code, version, userName, force, operation } = message;
+        
+        if (userName === this.currentUser && !force) {
             return;
         }
 
-        // 如果是自己發送的代碼變更，忽略
-        if (message.userName === this.currentUser) {
-            return;
+        console.log(`📥 收到代碼變更 from ${userName || 'server'}, 版本: ${version}, 強制: ${force}, 操作: ${operation}`);
+        
+        window.editorManager.setCode(code, version, operation || 'remote');
+        
+        if (userName && userName !== this.currentUser) {
+            this.updateUserStatus({
+                userName: userName,
+                lastActivity: Date.now()
+            });
         }
-
-        // 應用遠程代碼變更
-        window.Editor.setCode(message.code, message.version);
-        console.log(`✅ 已應用來自 ${message.userName} 的代碼變更`);
+        
+        if (force && (operation === 'load' || operation === 'import')) {
+            window.uiManager.showToast(`✅ ${userName || '你'} 已${operation === 'load' ? '載入' : '導入'}了新的程式碼`, 'success');
+        }
     }
 
-    // 處理消息隊列
+    handleCursorChange(message) {
+        if (message.userName !== this.currentUser && window.editorManager) {
+            // editorManager.updateUserCursor(message.userName, message.position);
+        }
+    }
+
+    handleChatMessage(message) {
+        if (window.chatManager) {
+            window.chatManager.displayMessage(message);
+        }
+    }
+
+    handleAIResponse(message) {
+        if(window.aiAssistant) {
+            window.aiAssistant.handleResponse(message);
+        }
+    }
+
+    handleCodeExecutionResult(message) {
+        if (window.editorManager) {
+            window.editorManager.handleExecutionResult(message);
+        }
+    }
+
+    handleConflictNotification(message) {
+        if(window.conflictManager) {
+            window.conflictManager.displayConflictNotification(message);
+        }
+    }
+
+    handleTeacherBroadcast(message) {
+        window.uiManager.showToast(`來自老師的廣播: ${message.message}`, 'teacher');
+    }
+
+    // 更新房間UI信息
+    updateRoomInfo(roomId, users) {
+        this.currentRoom = roomId;
+        const roomNameElement = document.getElementById('room-name-display');
+        if (roomNameElement) {
+            roomNameElement.textContent = roomId;
+        }
+        
+        this.activeUsers = new Map(users.map(u => [u.userName, u]));
+        window.uiManager.updateUserList(this.getActiveUsers());
+    }
+
     processMessageQueue() {
-        while (this.messageQueue.length > 0 && this.isConnected()) {
+        while (this.messageQueue.length > 0) {
             const message = this.messageQueue.shift();
             this.sendMessage(message);
         }
     }
 
-    // 等待UI和聊天管理器初始化
-    async waitForManagers() {
-        let attempts = 0;
-        const maxAttempts = 20;
-        const retryInterval = 1000;
-        
-        while (attempts < maxAttempts) {
-            // 檢查UI管理器
-            const uiReady = window.UI && window.UI.initialized;
-            
-            // 檢查聊天管理器
-            const chatReady = window.Chat && window.Chat.manager && window.Chat.manager.initialized;
-            
-            if (uiReady && chatReady) {
-                console.log('✅ UI和聊天管理器已就緒');
-                return true;
+    startHeartbeat() {
+        this.stopHeartbeat();
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.sendMessage({ type: 'heartbeat' });
+                this.lastHeartbeat = Date.now();
+            } else {
+                 // 如果連接斷開，嘗試重連
+                 console.log("💓 心跳檢測：連接已斷開，停止心跳。");
+                 this.stopHeartbeat();
             }
-            
-            console.log(`⏳ 等待管理器初始化... (第${attempts + 1}次嘗試)`);
-            
-            // 詳細的狀態日誌
-            if (!uiReady) {
-                if (window.UI) {
-                    console.log('- UI管理器狀態: 已創建但未初始化');
-                } else {
-                    console.log('- UI管理器狀態: 未創建');
-                }
-            }
-            
-            if (!chatReady) {
-                if (window.Chat) {
-                    if (window.Chat.manager) {
-                        console.log('- 聊天管理器狀態: 已創建但未初始化');
-                    } else {
-                        console.log('- 聊天管理器狀態: Chat存在但manager未創建');
-                    }
-                } else {
-                    console.log('- 聊天管理器狀態: Chat對象未創建');
-                }
-            }
-            
-            // 如果Chat對象存在但manager未創建，嘗試初始化
-            if (window.Chat && !window.Chat.manager && typeof window.Chat.initialize === 'function') {
-                console.log('🔄 嘗試初始化聊天管理器...');
-                try {
-                    window.Chat.initialize();
-                } catch (error) {
-                    console.error('❌ 聊天管理器初始化失敗:', error);
-                }
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, retryInterval));
-            attempts++;
+        }, 25000);
+         console.log('💓 心跳已啟動');
+    }
+
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+            console.log('💔 心跳已停止');
         }
-        
-        console.error('❌ 等待管理器初始化超時');
-        return false;
+    }
+
+    leaveRoom() {
+        if (this.isConnected()) {
+            this.sendMessage({ type: 'leave_room' });
+            this.ws.close(1000, 'User leaving room');
+        }
+        this.currentUser = null;
+        this.currentRoom = null;
+    }
+
+    // 暴露給 editorManager 的接口
+    sendCodeChange(code, forced = false, operation = null) {
+        this.sendMessage({
+            type: 'code_change',
+            code: code,
+            version: window.editorManager.codeVersion,
+            force: forced,
+            operation: operation
+        });
     }
 }
 
-// 創建全局實例
-window.wsManager = new WebSocketManager(); 
+// 全局 WebSocket 管理器實例
+const wsManager = new WebSocketManager(); 
+
+// 暴露到全域 window 對象
+window.wsManager = wsManager; 

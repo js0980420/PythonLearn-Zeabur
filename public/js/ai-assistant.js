@@ -129,14 +129,69 @@ class AIAssistantManager {
 
     // 初始化AI助教
     initialize() {
-        if (!this.responseContainer) {
-            console.error("❌ AI Response container 'aiResponse' not found!");
+        try {
+            // 檢查並獲取必要的 DOM 元素
+            if (!this.responseContainer) {
+                this.responseContainer = document.getElementById('aiResponse');
+                if (!this.responseContainer) {
+                    throw new Error("AI Response container 'aiResponse' not found!");
+                }
+            }
+            
+            if (!this.shareOptions) {
+                this.shareOptions = document.getElementById('aiShareOptions');
+                if (!this.shareOptions) {
+                    throw new Error("AI Share options 'aiShareOptions' not found!");
+                }
+            }
+
+            // 初始化狀態
+            this.isEnabled = true;
+            this.isProcessing = false;
+            this.isRequesting = false;
+            this.isFirstPrompt = true;
+            
+            // 清空並重置UI
+            this.clearResponse();
+            
+            // 檢查全域實例
+            if (!window.AIAssistant) {
+                window.AIAssistant = this;
+            }
+            
+            // 觸發初始化完成事件
+            window.dispatchEvent(new CustomEvent('AIAssistantInitialized', {
+                detail: {
+                    success: true,
+                    instance: this
+                }
+            }));
+            
+            console.log('✅ AI助教模組初始化完成 (V4.1 - 增強版)');
+            return true;
+        } catch (error) {
+            console.error('❌ AI助教初始化失敗:', error.message);
+            
+            // 觸發初始化失敗事件
+            window.dispatchEvent(new CustomEvent('AIAssistantInitialized', {
+                detail: {
+                    success: false,
+                    error: error.message
+                }
+            }));
+            
+            // 顯示錯誤提示
+            if (this.responseContainer) {
+                this.responseContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-triangle"></i> AI助教初始化失敗</h6>
+                        <p class="mb-0">${error.message}</p>
+                        <small>請重新整理頁面或聯繫管理員</small>
+                    </div>
+                `;
+            }
+            return false;
         }
-        if (!this.shareOptions) {
-            console.error("❌ AI Share options 'aiShareOptions' not found!");
-        }
-        this.clearResponse(); // 初始化時清空回應並隱藏分享
-        console.log('✅ AI助教模組初始化完成 (V4 - 真實API版本)');
     }
 
     // 清空AI回應並隱藏分享選項
@@ -159,16 +214,8 @@ class AIAssistantManager {
 
     // 請求AI分析 - 修改為調用真實API
     requestAnalysis(action) {
-        if (!wsManager.isConnected()) {
-             if (this.responseContainer) {
-                this.responseContainer.innerHTML = '<p class="text-danger p-3 text-center">⚠️ 請先加入房間以使用AI助教功能。</p>';
-             }
-             this.hideShareOptions();
-             return;
-        }
-
-        if (this.isProcessing) {
-            console.log('⏳ AI請求正在處理中，請稍候...');
+        if (!window.wsManager || !window.wsManager.ws || window.wsManager.ws.readyState !== WebSocket.OPEN) {
+            console.error('❌ 無法發送 AI 請求：WebSocket 未連接');
             return;
         }
         
@@ -234,7 +281,7 @@ class AIAssistantManager {
         console.log('🔍 [AI Debug] 發送的代碼內容:', code);
 
         // 發送AI請求到服務器
-        wsManager.sendMessage({
+        window.wsManager.sendMessage({
             type: 'ai_request',
             action: apiAction,
             requestId: requestId,
@@ -782,26 +829,132 @@ class AIAssistantManager {
 
     // 分析衝突並提供建議
     analyzeConflict(conflictData) {
+        // Analyze the type of changes
+        const changes = this.analyzeCodeChanges(conflictData.userCode, conflictData.serverCode);
+        
+        // Generate conflict resolution suggestions
+        const suggestions = this.generateConflictSuggestions(changes);
+        
         return `
             <div class="ai-conflict-analysis">
-                <h6><i class="fas fa-robot"></i> AI衝突分析</h6>
-                <div class="alert alert-info">
-                    <strong>🔍 衝突原因分析：</strong>
-                    <p>檢測到多位同學同時修改代碼，建議採用以下解決方案：</p>
-                    <ol>
-                        <li><strong>溝通協調：</strong> 在聊天室討論各自的修改方向</li>
-                        <li><strong>功能分工：</strong> 將不同功能分配給不同同學</li>
-                        <li><strong>版本合併：</strong> 手動合併最佳的修改部分</li>
+                <div class="alert alert-info mb-3">
+                    <h6 class="mb-2"><i class="fas fa-microscope"></i> 代碼變更分析</h6>
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="fas fa-check-circle text-success"></i> 變更類型：${changes.type}</li>
+                        <li><i class="fas fa-info-circle text-primary"></i> 影響範圍：${changes.scope}</li>
+                        <li><i class="fas fa-exclamation-circle text-warning"></i> 衝突風險：${changes.risk}</li>
+                    </ul>
+                </div>
+                
+                <div class="alert alert-success mb-3">
+                    <h6 class="mb-2"><i class="fas fa-lightbulb"></i> AI 建議</h6>
+                    <div class="mb-2">${suggestions.recommendation}</div>
+                    <hr>
+                    <h6 class="mb-2">建議步驟：</h6>
+                    <ol class="mb-0">
+                        ${suggestions.steps.map(step => `<li>${step}</li>`).join('')}
                     </ol>
                 </div>
-                <div class="alert alert-success">
-                    <strong>💡 推薦解決步驟：</strong>
-                    <p>1. 點擊「複製到聊天討論區」將衝突代碼分享</p>
-                    <p>2. 團隊討論選擇最佳方案</p>
-                    <p>3. 由一位同學負責最終合併</p>
+                
+                <div class="alert alert-warning mb-0">
+                    <h6 class="mb-2"><i class="fas fa-shield-alt"></i> 安全提醒</h6>
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="fas fa-check"></i> 合併前請確保完整理解兩個版本的改動</li>
+                        <li><i class="fas fa-check"></i> 建議在聊天室與對方討論修改意圖</li>
+                        <li><i class="fas fa-check"></i> 如有疑慮，可以選擇「稍後處理」</li>
+                    </ul>
                 </div>
             </div>
         `;
+    }
+
+    // Analyze code changes between two versions
+    analyzeCodeChanges(userCode, serverCode) {
+        if (!userCode || !serverCode) {
+            return {
+                type: '未知變更',
+                scope: '無法分析',
+                risk: '高'
+            };
+        }
+        
+        const userLines = userCode.split('\n');
+        const serverLines = serverCode.split('\n');
+        
+        // Calculate difference metrics
+        const addedLines = serverLines.length - userLines.length;
+        const totalDiffs = this.calculateDifferences(userLines, serverLines);
+        const diffPercentage = (totalDiffs / Math.max(userLines.length, serverLines.length)) * 100;
+        
+        // Determine change type
+        let type = '小幅修改';
+        if (diffPercentage > 70) type = '大規模重寫';
+        else if (diffPercentage > 30) type = '中等改動';
+        
+        // Determine scope
+        let scope = '局部變更';
+        if (diffPercentage > 50) scope = '大範圍變更';
+        else if (diffPercentage > 20) scope = '多處變更';
+        
+        // Determine risk
+        let risk = '低';
+        if (diffPercentage > 60) risk = '高';
+        else if (diffPercentage > 30) risk = '中';
+        
+        return { type, scope, risk };
+    }
+
+    // Calculate differences between two arrays of lines
+    calculateDifferences(lines1, lines2) {
+        let diffs = 0;
+        const maxLen = Math.max(lines1.length, lines2.length);
+        const minLen = Math.min(lines1.length, lines2.length);
+        
+        for (let i = 0; i < minLen; i++) {
+            if (lines1[i] !== lines2[i]) diffs++;
+        }
+        
+        diffs += maxLen - minLen; // Count added/removed lines
+        return diffs;
+    }
+
+    // Generate conflict resolution suggestions
+    generateConflictSuggestions(changes) {
+        let recommendation = '';
+        let steps = [];
+        
+        switch (changes.risk) {
+            case '高':
+                recommendation = '檢測到重大代碼改動，建議與對方進行詳細討論後再決定如何合併。';
+                steps = [
+                    '在聊天室與對方討論各自的修改目的',
+                    '確認哪些功能需要保留或合併',
+                    '商討出一個雙方都認可的合併方案',
+                    '由一人負責執行合併，另一人覆核結果'
+                ];
+                break;
+            
+            case '中':
+                recommendation = '代碼改動適中，建議仔細比對兩個版本的差異後再決定。';
+                steps = [
+                    '檢查兩個版本的具體改動',
+                    '評估是否有功能衝突',
+                    '選擇更完整或正確的版本',
+                    '必要時手動合併兩個版本的優點'
+                ];
+                break;
+            
+            default: // 低風險
+                recommendation = '改動較小，可以根據功能完整性選擇合適的版本。';
+                steps = [
+                    '比較兩個版本的改動',
+                    '確認哪個版本更符合需求',
+                    '選擇一個版本作為基礎',
+                    '如有需要，補充對方版本中的優點'
+                ];
+        }
+        
+        return { recommendation, steps };
     }
 
     // 分享AI回應到聊天室
@@ -957,42 +1110,68 @@ let AIAssistant;
 
 // 確保在 DOM 準備好之後初始化，並添加多重檢查
 function initializeAIAssistant() {
-    try {
-        if (AIAssistant) {
-            console.log('🔍 AIAssistant 已經初始化，跳過重複初始化');
-            return;
+    return new Promise((resolve, reject) => {
+        try {
+            if (AIAssistant) {
+                console.log('🔍 AIAssistant 已經初始化，跳過重複初始化');
+                resolve(AIAssistant);
+                return;
+            }
+            
+            AIAssistant = new AIAssistantManager();
+            
+            // 同時設置為window全域變數，確保在任何地方都能存取
+            window.AIAssistant = AIAssistant;
+            
+            console.log('🔧 AI助教管理器已創建');
+            
+            // 監聽初始化完成事件
+            window.addEventListener('AIAssistantInitialized', function(event) {
+                if (event.detail.success) {
+                    console.log('✅ AI助教初始化成功:', event.detail.instance);
+                    resolve(event.detail.instance);
+                } else {
+                    console.error('❌ AI助教初始化失敗:', event.detail.error);
+                    reject(new Error(event.detail.error));
+                }
+            }, { once: true });
+            
+            // 調用初始化方法
+            const initResult = AIAssistant.initialize();
+            
+            // 設置初始化超時
+            setTimeout(() => {
+                reject(new Error('AI助教初始化超時'));
+            }, 5000);
+            
+        } catch (error) {
+            console.error('❌ AIAssistant 初始化失敗:', error);
+            reject(error);
         }
-        
-        AIAssistant = new AIAssistantManager();
-
-// 同時設置為window全域變數，確保在任何地方都能存取
-window.AIAssistant = AIAssistant;
-
-console.log('🔧 AI助教管理器已創建');
-console.log('✅ 全域 AIAssistant 實例已創建並設置到 window:', AIAssistant);
-        
-        // 觸發一個自定義事件，通知其他模組 AIAssistant 已準備好
-        window.dispatchEvent(new CustomEvent('AIAssistantReady', { detail: AIAssistant }));
-    } catch (error) {
-        console.error('❌ AIAssistant 初始化失敗:', error);
-    }
+    });
 }
 
 // 智能初始化 - 多種方式確保正確初始化
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('DOMContentLoaded 初始化失敗:', error);
+        });
     });
 } else {
     // DOM已經準備好，立即初始化
-    initializeAIAssistant();
+    initializeAIAssistant().catch(error => {
+        console.error('立即初始化失敗:', error);
+    });
 }
 
 // 備用初始化 - 如果上面的方法失敗，在window load事件時再試一次
 window.addEventListener('load', function() {
     if (!window.AIAssistant) {
         console.log('🔄 備用初始化 AIAssistant...');
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('備用初始化失敗:', error);
+        });
     }
 });
 
@@ -1000,7 +1179,24 @@ window.addEventListener('load', function() {
 setTimeout(() => {
     if (!window.AIAssistant) {
         console.log('🔄 延遲初始化 AIAssistant...');
-        initializeAIAssistant();
+        initializeAIAssistant().catch(error => {
+            console.error('延遲初始化失敗:', error);
+            // 顯示錯誤提示
+            if (typeof UI !== 'undefined' && UI.showErrorToast) {
+                UI.showErrorToast('AI助教初始化失敗，請重新整理頁面');
+            } else {
+                const container = document.getElementById('aiResponse');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6><i class="fas fa-exclamation-triangle"></i> AI助教初始化失敗</h6>
+                            <p class="mb-0">${error.message}</p>
+                            <small>請重新整理頁面或聯繫管理員</small>
+                        </div>
+                    `;
+                }
+            }
+        });
     }
 }, 1000);
 
@@ -1027,69 +1223,55 @@ function showAIIntro() {
 } 
 
 // 全域函數（與HTML中的按鈕onclick事件對應）
-function globalAskAI(action) {
+async function globalAskAI(action) {
     console.log('🔍 globalAskAI 調用，action:', action);
-    console.log('🔍 window.AIAssistant 狀態:', !!window.AIAssistant);
-    console.log('🔍 AIAssistant 變數狀態:', !!AIAssistant);
     
-    // 優先使用全域變數，其次使用window屬性
-    const assistant = AIAssistant || window.AIAssistant;
-    
-    if (assistant && typeof assistant.requestAnalysis === 'function') {
-        console.log('✅ AIAssistant 可用，開始分析');
-        assistant.requestAnalysis(action);
-        return;
-    }
-    
-    console.warn("⚠️ AIAssistant 尚未初始化，嘗試重新初始化...");
-    
-    // 立即嘗試初始化
     try {
-        initializeAIAssistant();
+        // 顯示載入提示
+        if (typeof UI !== 'undefined' && UI.showInfoToast) {
+            UI.showInfoToast('正在處理您的請求...');
+        }
         
-        // 檢查初始化是否成功
-        const newAssistant = AIAssistant || window.AIAssistant;
-        if (newAssistant && typeof newAssistant.requestAnalysis === 'function') {
-            console.log('✅ 重新初始化成功，開始分析');
-            newAssistant.requestAnalysis(action);
-            return;
-        }
-    } catch (error) {
-        console.error('❌ 重新初始化失敗:', error);
-    }
-    
-    // 如果初始化失敗，等待事件
-    console.log('⏳ 等待 AIAssistant 初始化事件...');
-    
-    // 監聽 AIAssistant 準備好的事件
-    window.addEventListener('AIAssistantReady', function(event) {
-        console.log('✅ AIAssistant 準備完成，重試分析');
-        if (event.detail && typeof event.detail.requestAnalysis === 'function') {
-            event.detail.requestAnalysis(action);
-        }
-    }, { once: true });
-    
-    // 強制重新初始化
-    setTimeout(() => {
-        initializeAIAssistant();
-    }, 100);
-    
-    // 設置超時，如果 5 秒內還沒準備好就顯示錯誤
-    setTimeout(() => {
-        const finalAssistant = AIAssistant || window.AIAssistant;
-        if (!finalAssistant) {
-            console.error('❌ AI助教初始化最終失敗');
-            if (typeof UI !== 'undefined' && UI.showErrorToast) {
-                UI.showErrorToast('AI助教初始化超時，請重新整理頁面再試');
-            } else {
-                alert('AI助教初始化超時，請重新整理頁面再試');
+        // 檢查 AI 助教實例
+        let assistant = AIAssistant || window.AIAssistant;
+        
+        // 如果實例不存在，嘗試初始化
+        if (!assistant) {
+            console.log('⏳ AI助教未初始化，正在初始化...');
+            try {
+                assistant = await initializeAIAssistant();
+            } catch (error) {
+                throw new Error(`AI助教初始化失敗: ${error.message}`);
             }
         }
-    }, 5000);
-    
-    // 顯示加載提示
-    if (typeof UI !== 'undefined' && UI.showInfoToast) {
-        UI.showInfoToast('AI助教正在載入中，請稍等...');
+        
+        // 檢查必要的方法
+        if (!assistant || typeof assistant.requestAnalysis !== 'function') {
+            throw new Error('AI助教實例無效或缺少必要方法');
+        }
+        
+        // 執行分析
+        console.log('✅ 開始AI分析:', action);
+        await assistant.requestAnalysis(action);
+        
+    } catch (error) {
+        console.error('❌ AI請求失敗:', error);
+        
+        // 顯示錯誤提示
+        if (typeof UI !== 'undefined' && UI.showErrorToast) {
+            UI.showErrorToast(`AI助教錯誤: ${error.message}`);
+        } else {
+            const container = document.getElementById('aiResponse');
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-triangle"></i> AI請求失敗</h6>
+                        <p class="mb-0">${error.message}</p>
+                        <small>請稍後再試或聯繫管理員</small>
+                    </div>
+                `;
+            }
+        }
     }
 }
 

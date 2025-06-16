@@ -93,23 +93,42 @@ class UIManager {
         const loginSection = document.getElementById('loginSection');
         const workspaceSection = document.getElementById('workspaceSection');
         const nameInput = document.getElementById('nameInput');
+        const roomInput = document.getElementById('roomInput');
 
-        if (loginSection) loginSection.style.display = 'block';
-        else console.error('❌ UI.showJoinForm: loginSection not found');
+        if (loginSection) {
+            loginSection.style.display = 'block';
+            loginSection.classList.add('shake-animation'); // 添加抖動效果
+            setTimeout(() => loginSection.classList.remove('shake-animation'), 500);
+        } else {
+            console.error('❌ UI.showJoinForm: loginSection not found');
+        }
 
-        if (workspaceSection) workspaceSection.style.display = 'none';
-        else console.error('❌ UI.showJoinForm: workspaceSection not found');
+        if (workspaceSection) {
+            workspaceSection.style.display = 'none';
+        } else {
+            console.error('❌ UI.showJoinForm: workspaceSection not found');
+        }
         
-        // 清空並聚焦到名稱輸入框
+        // 保持房間名稱不變，但聚焦到名稱輸入框
         if (nameInput) {
-            nameInput.value = '';
-            nameInput.focus();
             nameInput.style.borderColor = '#dc3545'; // 紅色邊框提示
+            nameInput.focus();
+            nameInput.select(); // 選中當前文字
             
-            // 3秒後恢復正常邊框
-            setTimeout(() => {
+            // 添加輸入提示
+            nameInput.setAttribute('title', '此名稱已被使用，請選擇其他名稱');
+            nameInput.setAttribute('data-bs-toggle', 'tooltip');
+            nameInput.setAttribute('data-bs-placement', 'top');
+            
+            // 監聽輸入事件，當用戶開始輸入時恢復正常樣式
+            const resetStyle = () => {
                 nameInput.style.borderColor = '';
-            }, 3000);
+                nameInput.removeAttribute('title');
+                nameInput.removeAttribute('data-bs-toggle');
+                nameInput.removeAttribute('data-bs-placement');
+                nameInput.removeEventListener('input', resetStyle);
+            };
+            nameInput.addEventListener('input', resetStyle);
         }
         
         // 重置連接狀態
