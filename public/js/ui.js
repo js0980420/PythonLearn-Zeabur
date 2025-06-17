@@ -511,7 +511,7 @@ class UIManager {
         // 確保AI面板是顯示狀態
         this.switchToAI();
         
-        console.log('✅ 詳細操作教學已顯示');
+        console.log('✅ 詳細操作教學已顯示 - 最新版本 v2.0 (2025-06-04)');
     }
 }
 
