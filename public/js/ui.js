@@ -487,7 +487,7 @@ class UIManager {
                     <i class="fas fa-lightbulb"></i> <strong>學習建議與最佳實踐</strong>：
                     <ul class="mb-0 mt-2">
                         <li><strong>新手入門</strong>：建議先熟悉基本編程和保存功能，再嘗試多人協作</li>
-                        <li><strong>AI助教</strong>：善用AI的四大功能提升程式設計技巧和學習效率</li>
+                        <li><strong>AI助教</strong>：善用AI的五大功能提升程式設計技巧和學習效率</li>
                         <li><strong>協作溝通</strong>：多在聊天室與同學討論，分享AI分析結果促進互相學習</li>
                         <li><strong>代碼管理</strong>：定期使用多個槽位保存代碼，避免重要進度丟失</li>
                         <li><strong>教師互動</strong>：注意教師廣播訊息，主動在聊天室提問和參與討論</li>
