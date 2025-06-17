@@ -16,7 +16,6 @@ class AIAssistantManager {
             'analyze': 'AI 程式解釋',
             'check': 'AI 錯誤檢查', 
             'suggest': 'AI 改進建議',
-            'resolve': 'AI 衝突協助',
             'run_code': 'AI 代碼運行',
             // 新增 MCP 工具功能
             'web_automation': 'Web 自動化',
@@ -41,7 +40,7 @@ class AIAssistantManager {
                 name: 'Git 版本控制',
                 icon: 'fab fa-git-alt',
                 description: 'Git 操作：提交、分支、合併、歷史查看',
-                examples: ['查看提交歷史', '創建分支', '合併代碼', '解決衝突']
+                examples: ['查看提交歷史', '創建分支', '合併代碼', '版本回退']
             },
             'file_management': {
                 name: '檔案系統管理',
@@ -566,55 +565,7 @@ class AIAssistantManager {
                     </div>
                 </div>
 
-                <div class="accordion-item">
-                    <h2 class="accordion-header">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#conflictResolution">
-                            ⚠️ 衝突檢測與解決
-                        </button>
-                    </h2>
-                    <div id="conflictResolution" class="accordion-collapse collapse">
-                        <div class="accordion-body">
-                            <h7><strong>什麼是衝突？</strong></h7>
-                            <p>當多個同學同時修改代碼時，會出現版本不一致的情況。</p>
-                            
-                            <h7><strong>四種解決方案：</strong></h7>
-                            <div class="row mt-2">
-                                <div class="col-6 mb-2">
-                                    <div class="card border-primary">
-                                        <div class="card-body p-2">
-                                            <h8><strong>🔄 載入最新版</strong></h8>
-                                            <p class="small mb-0">放棄修改，使用服務器最新版本</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-6 mb-2">
-                                    <div class="card border-warning">
-                                        <div class="card-body p-2">
-                                            <h8><strong>⚡ 強制更新我的</strong></h8>
-                                            <p class="small mb-0">用你的版本覆蓋服務器版本</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-6 mb-2">
-                                    <div class="card border-info">
-                                        <div class="card-body p-2">
-                                            <h8><strong>💬 複製到聊天室</strong></h8>
-                                            <p class="small mb-0">分享衝突代碼，團隊討論解決</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-6 mb-2">
-                                    <div class="card border-success">
-                                        <div class="card-body p-2">
-                                            <h8><strong>🤖 AI協助分析</strong></h8>
-                                            <p class="small mb-0">讓AI分析差異並提供合併建議</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
 
                 <div class="accordion-item">
                     <h2 class="accordion-header">
@@ -827,135 +778,7 @@ class AIAssistantManager {
         return tips;
     }
 
-    // 分析衝突並提供建議
-    analyzeConflict(conflictData) {
-        // Analyze the type of changes
-        const changes = this.analyzeCodeChanges(conflictData.userCode, conflictData.serverCode);
-        
-        // Generate conflict resolution suggestions
-        const suggestions = this.generateConflictSuggestions(changes);
-        
-        return `
-            <div class="ai-conflict-analysis">
-                <div class="alert alert-info mb-3">
-                    <h6 class="mb-2"><i class="fas fa-microscope"></i> 代碼變更分析</h6>
-                    <ul class="list-unstyled mb-0">
-                        <li><i class="fas fa-check-circle text-success"></i> 變更類型：${changes.type}</li>
-                        <li><i class="fas fa-info-circle text-primary"></i> 影響範圍：${changes.scope}</li>
-                        <li><i class="fas fa-exclamation-circle text-warning"></i> 衝突風險：${changes.risk}</li>
-                    </ul>
-                </div>
-                
-                <div class="alert alert-success mb-3">
-                    <h6 class="mb-2"><i class="fas fa-lightbulb"></i> AI 建議</h6>
-                    <div class="mb-2">${suggestions.recommendation}</div>
-                    <hr>
-                    <h6 class="mb-2">建議步驟：</h6>
-                    <ol class="mb-0">
-                        ${suggestions.steps.map(step => `<li>${step}</li>`).join('')}
-                    </ol>
-                </div>
-                
-                <div class="alert alert-warning mb-0">
-                    <h6 class="mb-2"><i class="fas fa-shield-alt"></i> 安全提醒</h6>
-                    <ul class="list-unstyled mb-0">
-                        <li><i class="fas fa-check"></i> 合併前請確保完整理解兩個版本的改動</li>
-                        <li><i class="fas fa-check"></i> 建議在聊天室與對方討論修改意圖</li>
-                        <li><i class="fas fa-check"></i> 如有疑慮，可以選擇「稍後處理」</li>
-                    </ul>
-                </div>
-            </div>
-        `;
-    }
 
-    // Analyze code changes between two versions
-    analyzeCodeChanges(userCode, serverCode) {
-        if (!userCode || !serverCode) {
-            return {
-                type: '未知變更',
-                scope: '無法分析',
-                risk: '高'
-            };
-        }
-        
-        const userLines = userCode.split('\n');
-        const serverLines = serverCode.split('\n');
-        
-        // Calculate difference metrics
-        const addedLines = serverLines.length - userLines.length;
-        const totalDiffs = this.calculateDifferences(userLines, serverLines);
-        const diffPercentage = (totalDiffs / Math.max(userLines.length, serverLines.length)) * 100;
-        
-        // Determine change type
-        let type = '小幅修改';
-        if (diffPercentage > 70) type = '大規模重寫';
-        else if (diffPercentage > 30) type = '中等改動';
-        
-        // Determine scope
-        let scope = '局部變更';
-        if (diffPercentage > 50) scope = '大範圍變更';
-        else if (diffPercentage > 20) scope = '多處變更';
-        
-        // Determine risk
-        let risk = '低';
-        if (diffPercentage > 60) risk = '高';
-        else if (diffPercentage > 30) risk = '中';
-        
-        return { type, scope, risk };
-    }
-
-    // Calculate differences between two arrays of lines
-    calculateDifferences(lines1, lines2) {
-        let diffs = 0;
-        const maxLen = Math.max(lines1.length, lines2.length);
-        const minLen = Math.min(lines1.length, lines2.length);
-        
-        for (let i = 0; i < minLen; i++) {
-            if (lines1[i] !== lines2[i]) diffs++;
-        }
-        
-        diffs += maxLen - minLen; // Count added/removed lines
-        return diffs;
-    }
-
-    // Generate conflict resolution suggestions
-    generateConflictSuggestions(changes) {
-        let recommendation = '';
-        let steps = [];
-        
-        switch (changes.risk) {
-            case '高':
-                recommendation = '檢測到重大代碼改動，建議與對方進行詳細討論後再決定如何合併。';
-                steps = [
-                    '在聊天室與對方討論各自的修改目的',
-                    '確認哪些功能需要保留或合併',
-                    '商討出一個雙方都認可的合併方案',
-                    '由一人負責執行合併，另一人覆核結果'
-                ];
-                break;
-            
-            case '中':
-                recommendation = '代碼改動適中，建議仔細比對兩個版本的差異後再決定。';
-                steps = [
-                    '檢查兩個版本的具體改動',
-                    '評估是否有功能衝突',
-                    '選擇更完整或正確的版本',
-                    '必要時手動合併兩個版本的優點'
-                ];
-                break;
-            
-            default: // 低風險
-                recommendation = '改動較小，可以根據功能完整性選擇合適的版本。';
-                steps = [
-                    '比較兩個版本的改動',
-                    '確認哪個版本更符合需求',
-                    '選擇一個版本作為基礎',
-                    '如有需要，補充對方版本中的優點'
-                ];
-        }
-        
-        return { recommendation, steps };
-    }
 
     // 分享AI回應到聊天室
     shareResponse() {
@@ -980,16 +803,7 @@ class AIAssistantManager {
         }
     }
 
-    // 處理衝突請求AI幫助
-    handleConflictHelp(conflictData) {
-        const analysis = this.analyzeConflict(conflictData);
-        
-        // 在衝突模態中顯示AI分析
-        const analysisContainer = document.getElementById('conflictAIAnalysis');
-        if (analysisContainer) {
-            analysisContainer.innerHTML = analysis;
-        }
-    }
+
 
     // 獲取AI助教簡單介紹
     getAIIntroduction() {
@@ -1043,42 +857,10 @@ class AIAssistantManager {
                         </div>
                     </div>
                 </div>
-                <div class="col-6 mt-2">
-                    <div class="card h-100">
-                        <div class="card-body p-3">
-                            <h8><strong>🔧 衝突分析</strong></h8>
-                            <p class="small text-muted mb-2">多人協作衝突處理和歷史查看</p>
-                            <button class="btn btn-outline-danger btn-sm w-100" onclick="globalTestConflictAnalysis()">
-                                <i class="fas fa-code-branch"></i> 衝突工具
-                            </button>
-                        </div>
-                    </div>
-                </div>
+
             </div>
 
-            <div class="card mb-3">
-                <div class="card-header bg-info text-white">
-                    <h8><i class="fas fa-code-branch"></i> 協作衝突處理系統</h8>
-                </div>
-                <div class="card-body">
-                    <p class="mb-2"><strong>🔧 衝突分析功能：</strong></p>
-                    <ul class="mb-3">
-                        <li><strong>測試衝突</strong>：模擬協作衝突情況，學習處理方法</li>
-                        <li><strong>查看歷史</strong>：檢視過去的衝突處理記錄和學習經驗</li>
-                        <li><strong>實時分析</strong>：在真實衝突時，AI 提供具體解決建議</li>
-                        <li><strong>差異對比</strong>：清楚顯示雙方代碼的差異</li>
-                    </ul>
-                    
-                    <p class="mb-2"><strong>🤝 協作衝突處理流程：</strong></p>
-                    <ol class="mb-0">
-                        <li><strong>衝突預警</strong>：修改他人正在編輯的代碼時會提醒</li>
-                        <li><strong>自動檢測</strong>：系統檢測到同時編輯產生的衝突</li>
-                        <li><strong>界面顯示</strong>：被修改方看差異對比，修改方看等待狀態</li>
-                        <li><strong>AI 協助</strong>：點擊「請AI協助分析」獲得專業建議</li>
-                        <li><strong>決定方案</strong>：選擇接受或拒絕對方修改</li>
-                    </ol>
-                </div>
-            </div>
+
 
             <div class="alert alert-success">
                 <h8><i class="fas fa-graduation-cap"></i> 學習小貼士：</h8>
@@ -1086,7 +868,6 @@ class AIAssistantManager {
                     <li><strong>先寫再問</strong>：編寫一段代碼後再使用 AI 分析，學習效果更佳</li>
                     <li><strong>多次互動</strong>：根據 AI 建議修改後，可再次分析學習改進</li>
                     <li><strong>協作討論</strong>：將 AI 分析結果分享到聊天室，與同學討論學習</li>
-                    <li><strong>衝突學習</strong>：遇到協作衝突時，善用 AI 分析功能理解和解決</li>
                     <li><strong>實踐應用</strong>：將 AI 建議實際應用到代碼中，提升編程技能</li>
                 </ul>
             </div>
@@ -1291,40 +1072,9 @@ function globalHideShareOptions() {
     }
 }
 
-// 新增：衝突分析測試函數
-function globalTestConflictAnalysis() {
-    if (window.AIAssistant) {
-        // 顯示衝突分析說明
-        const conflictInfo = `
-            <div class="alert alert-info">
-                <h6><i class="fas fa-code-branch"></i> 協作衝突分析工具</h6>
-                <p><strong>🔧 功能說明：</strong></p>
-                <ul>
-                    <li><strong>即時檢測</strong>：當多人同時編輯相同代碼時，系統會自動檢測衝突</li>
-                    <li><strong>智能分析</strong>：AI 會分析衝突的原因並提供解決建議</li>
-                    <li><strong>差異顯示</strong>：清楚顯示不同用戶之間的代碼差異</li>
-                    <li><strong>協作指導</strong>：提供最佳的協作衝突解決方案</li>
-                </ul>
-                <p><strong>💡 使用方法：</strong></p>
-                <ol>
-                    <li>當發生真實衝突時，系統會自動彈出衝突處理界面</li>
-                    <li>點擊「請AI協助分析」按鈕，獲得專業建議</li>
-                    <li>根據AI建議選擇適當的解決方案</li>
-                </ol>
-                <p class="mb-0"><strong>🤝 協作小貼士：</strong>在多人協作時，建議先溝通再修改，避免不必要的衝突。</p>
-            </div>
-        `;
-        window.AIAssistant.showResponse(conflictInfo);
-    } else {
-        console.error("AIAssistant 尚未初始化");
-        if (typeof showToast === 'function') {
-            showToast('AI助教尚未載入完成，請稍後再試', 'warning');
-        }
-    }
-}
+
 
 // 將全域函數也設置到window物件
 window.globalAskAI = globalAskAI;
 window.globalShareAIResponse = globalShareAIResponse;
-window.globalHideShareOptions = globalHideShareOptions;
-window.globalTestConflictAnalysis = globalTestConflictAnalysis; 
+window.globalHideShareOptions = globalHideShareOptions; 

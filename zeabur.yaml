@@ -24,7 +24,11 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_HOST: ${MYSQL_HOST}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_USER: ${MYSQL_USERNAME}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_USERNAME: ${MYSQL_USER}
+      # Zeabur 環境標識
+      ZEABUR: "true"
+      ZEABUR_ENVIRONMENT: "production"
     build:
       commands:
         - npm install --production --no-optional

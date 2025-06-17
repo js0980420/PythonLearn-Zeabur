@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-06-17T07:14:51.791Z",
+  "results": {
+    "fileCheck": true,
+    "serverStart": true,
+    "websocket": true,
+    "mysql": false,
+    "ai": true,
+    "overall": true
+  },
+  "summary": {
+    "critical_passed": true,
+    "optional_passed": 1,
+    "overall_status": "PASS"
+  }
+}

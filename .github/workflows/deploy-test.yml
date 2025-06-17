@@ -1,0 +1,188 @@
+name: 🚀 PythonLearn-Zeabur 部署測試
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: '測試模式'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - quick
+
+env:
+  NODE_VERSION: '18'
+  MYSQL_HOST: ${{ secrets.MYSQL_HOST || 'localhost' }}
+  MYSQL_USER: ${{ secrets.MYSQL_USER || 'root' }}
+  MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD || '' }}
+  MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE || 'python_collaboration' }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  # 快速檢查工作
+  quick-check:
+    name: 📋 快速檢查
+    runs-on: ubuntu-latest
+    outputs:
+      should-run-tests: ${{ steps.check.outputs.should-run }}
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 檢查檔案完整性
+      id: check
+      run: |
+        echo "🔍 檢查必要檔案..."
+        
+        required_files=(
+          "server.js"
+          "package.json"
+          "public/index.html"
+          "public/js/websocket.js"
+          "public/js/ai-assistant.js"
+          "deploy-test.js"
+        )
+        
+        missing_files=()
+        for file in "${required_files[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            missing_files+=("$file")
+          fi
+        done
+        
+        if [[ ${#missing_files[@]} -gt 0 ]]; then
+          echo "❌ 缺少必要檔案: ${missing_files[*]}"
+          echo "should-run=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        echo "✅ 所有必要檔案都存在"
+        echo "should-run=true" >> $GITHUB_OUTPUT
+
+  # 完整部署測試
+  deployment-test:
+    name: 🧪 完整部署測試
+    runs-on: ubuntu-latest
+    needs: quick-check
+    if: needs.quick-check.outputs.should-run-tests == 'true'
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: python_collaboration
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 設置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: 安裝依賴
+      run: |
+        echo "📦 安裝 npm 依賴..."
+        npm ci
+        
+    - name: 安裝 Playwright
+      run: |
+        npm install @playwright/test
+        npx playwright install chromium --with-deps
+        
+    - name: 設置測試環境變數
+      run: |
+        echo "⚙️ 設置測試環境..."
+        echo "MYSQL_HOST=localhost" >> $GITHUB_ENV
+        echo "MYSQL_USER=root" >> $GITHUB_ENV
+        echo "MYSQL_PASSWORD=test_password" >> $GITHUB_ENV
+        echo "MYSQL_DATABASE=python_collaboration" >> $GITHUB_ENV
+        echo "NODE_ENV=test" >> $GITHUB_ENV
+        echo "PORT=3001" >> $GITHUB_ENV
+        
+    - name: 等待 MySQL 就緒
+      run: |
+        echo "⏳ 等待 MySQL 服務啟動..."
+        for i in {1..30}; do
+          if mysqladmin ping -h"localhost" -P"3306" -u"root" -p"test_password" --silent; then
+            echo "✅ MySQL 已就緒"
+            break
+          fi
+          echo "等待中... ($i/30)"
+          sleep 2
+        done
+        
+    - name: 執行完整部署測試
+      run: |
+        echo "🚀 執行部署測試腳本..."
+        chmod +x deploy-test.js
+        node deploy-test.js
+        
+    - name: 上傳測試報告
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: deployment-test-report
+        path: |
+          deployment-test-report.json
+          test-results/
+        retention-days: 7
+
+  # 測試結果匯總
+  test-summary:
+    name: 📊 測試結果匯總
+    runs-on: ubuntu-latest
+    needs: [quick-check, deployment-test]
+    if: always() && needs.quick-check.outputs.should-run-tests == 'true'
+    
+    steps:        
+    - name: 生成測試匯總
+      run: |
+        echo "📊 生成測試結果匯總..."
+        
+        if [[ "${{ needs.deployment-test.result }}" == "success" ]]; then
+          echo "🎉 **所有測試都通過了！平台已準備好部署到 Zeabur。**"
+          echo ""
+          echo "📋 部署檢查清單："
+          echo "   ✅ Node.js 應用程序正常運行"
+          echo "   ✅ WebSocket 連接正常"
+          echo "   ✅ MySQL 數據庫兼容"
+          echo "   ✅ Playwright 前端測試通過"
+          echo "   ✅ AI 助教集成就緒"
+          echo ""
+          echo "🔗 可以開始部署到 Zeabur 了！"
+        else
+          echo "⚠️ **測試失敗，建議檢查後再部署。**"
+          echo "請查看測試報告了解詳情。"
+        fi
+
+  # 部署就緒通知
+  deploy-ready:
+    name: 🎯 部署就緒通知
+    runs-on: ubuntu-latest
+    needs: [deployment-test]
+    if: needs.deployment-test.result == 'success' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 部署就緒通知
+      run: |
+        echo "🎉 部署測試完成！"
+        echo "✅ 所有測試都通過了"
+        echo "🚀 平台已準備好部署到 Zeabur" 

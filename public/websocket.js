@@ -4,87 +4,12 @@ class WebSocketManager {
         this.ws = null;
         this.currentUser = null;
         this.currentRoom = null;
-        this.isConnected = false;
-        this.activeUsers = new Map();
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.messageQueue = [];
         this.heartbeatInterval = null;
-        this.lastHeartbeat = Date.now();
-        console.log('🔧 WebSocketManager 已創建');
-    }
-
-    // 獲取當前房間的活躍用戶列表
-    getActiveUsers() {
-        return Array.from(this.activeUsers.values());
-    }
-
-    // 更新用戶狀態
-    updateUserStatus(userData) {
-        const { userName, isEditing, position } = userData;
-        
-        if (userName === this.currentUser) return;
-        
-        // 更新或添加用戶
-        this.activeUsers.set(userName, {
-            userName,
-            isEditing: isEditing || false,
-            position: position || null,
-            lastActivity: Date.now()
-        });
-        
-        // 通知編輯器更新協作狀態
-        if (window.editorManager) {
-            editorManager.updateCollaboratorStatus(userData);
-        }
-        
-        console.log(`👥 更新用戶狀態: ${userName}, 編輯中: ${isEditing}`);
-    }
-    
-    // 移除用戶
-    removeUser(userName) {
-        if (this.activeUsers.has(userName)) {
-            this.activeUsers.delete(userName);
-            console.log(`👋 用戶離開: ${userName}`);
-            
-            // 清除相關的衝突警告
-            if (window.conflictManager) {
-                conflictManager.clearConflictWarning(userName);
-            }
-        }
-    }
-    
-    // 處理用戶消息
-    handleUserMessage(message) {
-        switch (message.type) {
-            case 'user_join':
-                this.updateUserStatus({
-                    userName: message.userName,
-                    isEditing: false
-                });
-                break;
-                
-            case 'user_leave':
-                this.removeUser(message.userName);
-                break;
-                
-            case 'editing_status':
-                this.updateUserStatus(message);
-                break;
-        }
-    }
-    
-    // 清理非活躍用戶
-    cleanupInactiveUsers() {
-        const now = Date.now();
-        const timeout = 30000; // 30 秒超時
-        
-        for (const [userName, userData] of this.activeUsers) {
-            if (now - userData.lastActivity > timeout) {
-                this.removeUser(userName);
-            }
-        }
+        this.lastHeartbeat = 0;
     }
 
     // 檢查連接狀態
@@ -184,18 +109,13 @@ class WebSocketManager {
 
     // 發送消息
     sendMessage(message) {
-        if (!this.ws) {
-            console.log('📝 WebSocket 未初始化，消息已加入隊列');
-            this.messageQueue.push(message);
-            return;
-        }
-
-        if (this.ws.readyState === WebSocket.OPEN) {
+        if (this.isConnected()) {
             try {
                 this.ws.send(JSON.stringify(message));
                 console.log('📤 發送消息:', message.type);
             } catch (error) {
                 console.error('❌ 發送消息失敗:', error);
+                // 添加到消息隊列以便重連後發送
                 this.messageQueue.push(message);
             }
         } else {
@@ -241,13 +161,7 @@ class WebSocketManager {
             case 'teacher_broadcast':
                 this.handleTeacherBroadcast(message);
                 break;
-            case 'notification_sent':
-                console.log('📧 衝突通知已發送確認:', message);
-                // 可以在這裡添加用戶反饋，例如顯示"通知已發送"的提示
-                if (window.UI && typeof window.UI.showInfoToast === 'function') {
-                    window.UI.showInfoToast('衝突通知已發送給對方');
-                }
-                break;
+
             case 'pong':
                 this.lastHeartbeat = Date.now();
                 break;
@@ -478,20 +392,16 @@ class WebSocketManager {
                     // 如果是其他用戶的更新，恢復游標位置和選擇範圍
                     if (message.userName !== this.currentUser) {
                         // 確保游標位置在有效範圍內
-                        const totalLines = editor.lineCount();
-                        if (currentPosition.line < totalLines) {
-                            const lineContent = editor.getLine(currentPosition.line);
-                            editor.setCursor({
-                                line: currentPosition.line,
-                                ch: Math.min(currentPosition.ch, lineContent ? lineContent.length : 0)
-                            });
+                        const lines = editor.session.getLength();
+                        if (currentPosition.row < lines) {
+                            editor.moveCursorTo(
+                                currentPosition.row,
+                                Math.min(currentPosition.column, editor.session.getLine(currentPosition.row).length)
+                            );
                             
                             // 如果有選擇範圍，也恢復它
-                            if (currentSelection && currentSelection.length > 0) {
-                                editor.setSelection(
-                                    currentSelection.anchor || currentPosition,
-                                    currentSelection.head || currentPosition
-                                );
+                            if (!currentSelection.isEmpty()) {
+                                editor.selection.setRange(currentSelection);
                             }
                         }
                     }
@@ -505,14 +415,12 @@ class WebSocketManager {
                 window.Editor.lastRemoteChangeTime = Date.now();
             }
             
-            /* 暫時註解協作用戶更新
             // 更新協作用戶列表
             if (message.userName && message.userName !== this.currentUser) {
                 if (window.Editor && typeof window.Editor.updateCollaboratingUsers === 'function') {
                     window.Editor.updateCollaboratingUsers(message.userName);
                 }
             }
-            */
             
         } catch (error) {
             console.error('❌ 處理代碼變更時發生錯誤:', error);
@@ -536,10 +444,7 @@ class WebSocketManager {
     handleChatMessage(message) {
         if (window.Chat) {
             const { userName, roomName, message: chatText, isTeacher } = message;
-            console.log('💬 收到聊天消息:', { userName, roomName, chatText, isTeacher });
             window.Chat.addMessage(userName, chatText, false, isTeacher, roomName);
-        } else {
-            console.warn('⚠️ Chat 模組未初始化，無法顯示聊天消息');
         }
     }
 
@@ -549,6 +454,32 @@ class WebSocketManager {
         console.log('   - 動作:', message.action);
         console.log('   - 請求ID:', message.requestId);
         console.log('   - 錯誤:', message.error);
+        
+        // 檢查是否為衝突分析回應
+        if (message.action === 'conflict_analysis') {
+            console.log('🔍 處理AI衝突分析回應...');
+            
+            // 顯示在AI助教面板中
+            if (typeof AIAssistant !== 'undefined' && AIAssistant && typeof AIAssistant.showResponse === 'function') {
+                const analysisResult = message.response || '❌ AI衝突分析無回應';
+                const formattedResponse = `
+                    <h6><i class="fas fa-exclamation-triangle text-warning"></i> AI協作衝突分析</h6>
+                    <div class="alert alert-info">
+                        ${AIAssistant.formatAIResponse ? AIAssistant.formatAIResponse(analysisResult) : analysisResult}
+                    </div>
+                `;
+                AIAssistant.showResponse(formattedResponse);
+                console.log('✅ AI衝突分析結果已顯示在助教面板');
+            }
+            
+            // 同時也顯示在衝突解決器中
+            if (typeof ConflictResolver !== 'undefined' && ConflictResolver && typeof ConflictResolver.displayAIAnalysis === 'function') {
+                ConflictResolver.displayAIAnalysis(message.response);
+                console.log('✅ AI衝突分析結果已顯示在衝突解決器');
+            }
+            
+            return;
+        }
         
         // 處理一般AI回應
         console.log('🔍 檢查AI助教實例可用性...');
@@ -561,7 +492,7 @@ class WebSocketManager {
         const aiInstance = window.AIAssistant || AIAssistant;
         
         if (aiInstance && typeof aiInstance.handleAIResponse === 'function') {
-            console.log('✅ 調用AIAssistant處理AI回應');
+            console.log('✅ 調用AIAssistant處理一般AI回應');
             console.log('🔍 傳遞給AI助教的回應數據:', {
                 type: typeof message.response,
                 length: message.response ? message.response.length : 0,
@@ -749,7 +680,7 @@ class WebSocketManager {
 
     // 處理消息隊列
     processMessageQueue() {
-        while (this.messageQueue.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        while (this.messageQueue.length > 0 && this.isConnected()) {
             const message = this.messageQueue.shift();
             this.sendMessage(message);
         }
@@ -760,7 +691,7 @@ class WebSocketManager {
         this.stopHeartbeat(); // 確保不會重複啟動
         
         this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            if (this.isConnected()) {
                 this.ws.send(JSON.stringify({ type: 'ping' }));
             }
         }, 30000); // 每30秒發送一次心跳
@@ -779,7 +710,7 @@ class WebSocketManager {
 
     // 離開房間
     leaveRoom() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (this.isConnected()) {
             this.sendMessage({
                 type: 'leave_room',
                 room: this.currentRoom
@@ -793,26 +724,6 @@ class WebSocketManager {
         
         this.currentRoom = null;
         console.log('👋 已離開房間');
-    }
-
-    // 發送代碼變更
-    sendCodeChange(code, forced = false, operation = null) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.error('❌ WebSocket 未連接，無法發送代碼變更');
-            return;
-        }
-        
-        const message = {
-            type: 'code_change',
-            code: code,
-            forced: forced,
-            operation: operation,
-            timestamp: Date.now(),
-            version: window.Editor?.codeVersion || 0
-        };
-        
-        this.sendMessage(message);
-        console.log('📤 代碼變更已發送:', { forced, operation });
     }
 }
 

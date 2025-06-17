@@ -285,10 +285,7 @@ class ChatManager {
         // 動態設置消息樣式
         this.setChatMessageStyles(messageDiv, isSystem, isTeacher);
         
-        if (message.includes('=== 程式碼衝突討論 ===')) {
-            // 衝突代碼特殊格式
-            messageDiv.innerHTML = this.formatConflictMessage(userName, message);
-        } else {
+        {
             // 為教師消息添加特殊標識
             const userDisplay = isTeacher ? `👨‍🏫 ${userName}` : userName;
             const roomDisplay = roomName ? `<span class="chat-message-room">[${roomName}]</span> ` : '';
@@ -380,28 +377,7 @@ class ChatManager {
         }
     }
 
-    // 格式化衝突消息
-    formatConflictMessage(userName, message) {
-        const parts = message.split('\n');
-        let formattedMessage = `<strong>${userName}:</strong><br>`;
-        let inCodeBlock = false;
-        
-        parts.forEach(part => {
-            if (part.includes('我的版本') || part.includes('服務器版本')) {
-                formattedMessage += `<br><strong>${part}</strong><br>`;
-                inCodeBlock = true;
-            } else if (part.includes('請大家討論')) {
-                inCodeBlock = false;
-                formattedMessage += `<br><em>${part}</em>`;
-            } else if (inCodeBlock && part.trim()) {
-                formattedMessage += `<div class="conflict-code-block">${this.escapeHtml(part)}</div>`;
-            } else if (part.trim()) {
-                formattedMessage += this.escapeHtml(part) + '<br>';
-            }
-        });
-        
-        return formattedMessage;
-    }
+
 
     // 轉義HTML
     escapeHtml(text) {

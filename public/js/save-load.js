@@ -412,14 +412,17 @@ class SaveLoadManager {
             return;
         }
 
+        // 🔧 修復：明確請求載入用戶個人保存的最新代碼，而非房間即時代碼
         const loadData = {
             type: 'load_code',
             title: '最新',  // 使用固定的"最新"槽位
             roomId: this.roomId,
-            author: this.currentUser.name
+            author: this.currentUser.name,
+            loadLatest: false,  // 🔧 設為 false，載入個人保存的代碼
+            loadUserCode: true  // 🔧 新增標記，明確指示載入用戶保存的代碼
         };
 
-        console.log('📂 發送載入請求:', loadData);
+        console.log('📂 發送載入請求（用戶個人代碼）:', loadData);
         window.wsManager.sendMessage(loadData);
         this.showMessage('載入請求已發送...', 'info');
     }
@@ -791,16 +794,28 @@ class SaveLoadManager {
     handleLoadSuccess(message) {
         console.log('✅ 程式碼載入成功:', message);
         
-        if (message.code && window.Editor) {
-            // 將載入的代碼設置到編輯器
-            Editor.setCode(message.code);
+        if (message.code !== undefined && window.Editor) {
+            // 🔧 修復：確保編輯器正確設置代碼並恢復狀態
+            Editor.setCode(message.code, message.version);
             
-            const successMsg = message.message || `成功載入代碼 "${message.title}" (版本 ${message.version})`;
+            // 🔧 修復：延遲一點時間確保編輯器狀態完全恢復
+            setTimeout(() => {
+                if (window.Editor && typeof window.Editor.resetEditingState === 'function') {
+                    window.Editor.resetEditingState();
+                    console.log('🔧 編輯器狀態已重置，可以正常保存');
+                }
+            }, 200);
+            
+            const successMsg = message.message || `成功載入代碼 "${message.title || '最新版本'}" ${message.version ? `(版本 ${message.version})` : ''}`;
             this.showMessage(successMsg, 'success');
             
-            console.log(`✅ 已將代碼載入到編輯器: ${message.title}`);
+            console.log(`✅ 已將代碼載入到編輯器: ${message.title || '最新版本'}, 長度: ${message.code.length}`);
         } else {
-            this.showMessage('載入的代碼內容為空或編輯器未準備好', 'warning');
+            if (message.code === '') {
+                this.showMessage('載入的代碼內容為空', 'warning');
+            } else {
+                this.showMessage('編輯器未準備好，無法載入代碼', 'error');
+            }
         }
     }
 
