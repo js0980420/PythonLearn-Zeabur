@@ -1,39 +1,28 @@
 @echo off
 chcp 65001 >nul
+echo 🔍 檢查端口 3000 占用狀況...
 
-echo ========================================
-echo        Port 3000 Cleanup Tool
-echo ========================================
-echo.
-
-echo Checking processes using port 3000...
-
-REM Find processes using port 3000
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000') do (
-    if "%%a" neq "" (
-        echo Found process PID: %%a
-        echo Terminating process %%a...
-        taskkill /F /PID %%a >nul 2>&1
-        if !errorlevel! equ 0 (
-            echo SUCCESS: Process %%a terminated
-        ) else (
-            echo WARNING: Failed to terminate process %%a
-        )
+REM 檢查端口占用
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000 "') do (
+    echo 🔍 發現進程 PID: %%a 占用端口 3000
+    taskkill /PID %%a /F >nul 2>&1
+    if errorlevel 1 (
+        echo ❌ 無法終止進程 %%a
+    ) else (
+        echo ✅ 已終止進程 %%a
     )
 )
 
-echo.
-echo Waiting for port to be fully released...
-timeout /t 2 >nul
+REM 等待一秒後再次檢查
+timeout /t 1 /nobreak >nul
 
-echo Checking port 3000 status...
-netstat -ano | findstr :3000
+REM 驗證端口是否已釋放
+netstat -ano | findstr ":3000 " >nul
 if errorlevel 1 (
-    echo SUCCESS: Port 3000 is now free
+    echo ✅ 端口 3000 已釋放，可以啟動服務器
 ) else (
-    echo WARNING: Port 3000 may still be in use
+    echo ⚠️ 端口 3000 仍被占用，請手動檢查
+    netstat -ano | findstr ":3000"
 )
 
-echo.
-echo Port cleanup completed.
 pause 

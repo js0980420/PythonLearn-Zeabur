@@ -393,58 +393,114 @@ class UIManager {
                 </div>
                 
                 <div class="tutorial-section">
-                    <h6 class="text-success"><i class="fas fa-code"></i> 2. 多人編程協作</h6>
-                    <p>• <strong>編輯代碼</strong>：直接在編輯器中輸入Python代碼<br>
-                    • <strong>即時同步</strong>：您的修改會即時同步給房間內所有人<br>
-                    • <strong>運行代碼</strong>：點擊「運行」按鈕執行Python代碼<br>
-                    • <strong>保存代碼</strong>：點擊「保存」或按Ctrl+S保存到本地<br>
-                    • <strong>下載代碼</strong>：點擊「下載」下載.py檔案</p>
+                    <h6 class="text-success"><i class="fas fa-code"></i> 2. 程式編輯與運行</h6>
+                    <p>• <strong>編輯代碼</strong>：直接在編輯器中輸入Python代碼，支援語法高亮和自動縮排<br>
+                    • <strong>即時同步</strong>：您的修改會即時同步給房間內所有人（每秒同步）<br>
+                    • <strong><i class="fas fa-play text-success"></i> 運行代碼</strong>：點擊綠色「運行」按鈕或按 Ctrl+Enter 執行Python代碼<br>
+                    • <strong>查看結果</strong>：運行結果會顯示在編輯器下方的輸出區域<br>
+                    • <strong>清除輸出</strong>：點擊「清除」按鈕可清空運行結果</p>
                 </div>
                 
                 <div class="tutorial-section">
-                    <h6 class="text-info"><i class="fas fa-robot"></i> 3. AI助教功能</h6>
-                    <p>• <strong>解釋程式</strong>：AI分析您的代碼邏輯和功能<br>
-                    • <strong>檢查錯誤</strong>：AI幫您找出程式中的錯誤和問題<br>
-                    • <strong>改進建議</strong>：AI提供代碼優化和改進建議<br>
-                    • <strong>運行代碼</strong>：AI協助執行和分析程式運行結果</p>
+                    <h6 class="text-info"><i class="fas fa-save"></i> 3. 代碼儲存與管理</h6>
+                    <p>• <strong><i class="fas fa-save text-primary"></i> 保存功能</strong>：<br>
+                    &nbsp;&nbsp;- 點擊「保存」按鈕或按 Ctrl+S 保存當前代碼<br>
+                    &nbsp;&nbsp;- 支援5個儲存槽位（最新 + 槽位1-4）<br>
+                    &nbsp;&nbsp;- 可為每個槽位命名便於管理<br><br>
+                    • <strong><i class="fas fa-sync-alt text-info"></i> 載入功能</strong>：<br>
+                    &nbsp;&nbsp;- 點擊「載入」選擇要載入的代碼版本<br>
+                    &nbsp;&nbsp;- 可載入最新版本或指定槽位的代碼<br>
+                    &nbsp;&nbsp;- 載入時會提示確認以避免誤操作<br><br>
+                    • <strong><i class="fas fa-download text-success"></i> 下載功能</strong>：<br>
+                    &nbsp;&nbsp;- 點擊「更多」→「下載 .py 檔案」<br>
+                    &nbsp;&nbsp;- 自動下載為標準Python檔案格式<br>
+                    &nbsp;&nbsp;- 檔案名包含時間戳便於識別<br><br>
+                    • <strong><i class="fas fa-upload text-warning"></i> 導入功能</strong>：<br>
+                    &nbsp;&nbsp;- 點擊「更多」→「導入檔案」<br>
+                    &nbsp;&nbsp;- 支援 .py 和 .txt 檔案格式<br>
+                    &nbsp;&nbsp;- 導入的內容會替換當前編輯器內容</p>
                 </div>
                 
                 <div class="tutorial-section">
-                    <h6 class="text-warning"><i class="fas fa-comments"></i> 4. 聊天室溝通</h6>
-                    <p>• 點擊「聊天室」標籤切換到聊天功能<br>
-                    • 與其他協作者即時討論程式問題<br>
-                    • 教師可以發送通知給所有學生<br>
-                    • AI分析結果可一鍵分享到聊天室討論</p>
-                </div>
-                
-
-                
-                <div class="tutorial-section">
-                    <h6 class="text-secondary"><i class="fas fa-keyboard"></i> 5. 快捷鍵操作</h6>
-                    <p>• <strong>Ctrl+S</strong>：保存代碼到本地<br>
-                    • <strong>Ctrl+Enter</strong>：運行Python代碼<br>
-                    • <strong>Ctrl+/</strong>：註釋/取消註釋選中行<br>
-                    • <strong>Tab</strong>：增加縮排<br>
-                    • <strong>Shift+Tab</strong>：減少縮排</p>
+                    <h6 class="text-warning"><i class="fas fa-robot"></i> 4. AI智能助教</h6>
+                    <p>• <strong><i class="fas fa-lightbulb text-info"></i> 解釋程式</strong>：AI詳細分析您的代碼邏輯、功能和實現原理<br>
+                    • <strong><i class="fas fa-bug text-danger"></i> 檢查錯誤</strong>：AI幫您找出語法錯誤、邏輯問題和潛在bug<br>
+                    • <strong><i class="fas fa-lightbulb text-success"></i> 改進建議</strong>：AI提供代碼優化、重構和最佳實踐建議<br>
+                    • <strong><i class="fas fa-play text-dark"></i> 運行代碼</strong>：AI協助執行程式並分析運行結果和輸出<br>
+                    • <strong><i class="fas fa-share text-primary"></i> 分享回應</strong>：AI分析完成後可點擊「分享」將結果發送到聊天室與同學討論</p>
                 </div>
                 
                 <div class="tutorial-section">
-                    <h6 class="text-purple"><i class="fas fa-chalkboard-teacher"></i> 6. 教師功能</h6>
-                    <p>• <strong>監控後台</strong>：教師可開啟專用後台監控所有房間<br>
-                    • <strong>廣播消息</strong>：向特定房間或所有學生發送通知<br>
-                    • <strong>房間管理</strong>：查看各房間學習狀況和在線人數<br>
-                    • <strong>關閉房間</strong>：課程結束時可統一關閉所有房間</p>
+                    <h6 class="text-success"><i class="fas fa-comments"></i> 5. 聊天室協作溝通</h6>
+                    <p>• <strong>切換聊天室</strong>：點擊「聊天室」標籤切換到聊天功能<br>
+                    • <strong>即時討論</strong>：與房間內其他同學即時討論程式問題和學習心得<br>
+                    • <strong>教師通知</strong>：接收教師發送的重要通知和指導訊息<br>
+                    • <strong>AI分享</strong>：將AI助教的分析結果一鍵分享到聊天室供大家參考<br>
+                    • <strong><i class="fas fa-eye text-info"></i> 教師監控</strong>：⚠️ 提醒：所有聊天室訊息都會被教師看到，請維持良好的討論品質</p>
+                </div>
+                
+                <div class="tutorial-section">
+                    <h6 class="text-secondary"><i class="fas fa-keyboard"></i> 6. 快捷鍵操作</h6>
+                    <p>• <strong>Ctrl+S</strong>：快速保存代碼到本地儲存<br>
+                    • <strong>Ctrl+Enter</strong>：執行Python代碼<br>
+                    • <strong>Ctrl+/</strong>：註釋/取消註釋選中的代碼行<br>
+                    • <strong>Tab</strong>：增加代碼縮排（Python必需）<br>
+                    • <strong>Shift+Tab</strong>：減少代碼縮排<br>
+                    • <strong>Ctrl+Z</strong>：撤銷上一步操作<br>
+                    • <strong>Ctrl+Y</strong>：重做已撤銷的操作</p>
+                </div>
+                
+                <div class="tutorial-section">
+                    <h6 class="text-danger"><i class="fas fa-chalkboard-teacher"></i> 7. 教師監控與管理</h6>
+                    <p>• <strong><i class="fas fa-desktop text-primary"></i> 監控後台</strong>：教師可開啟專用後台即時監控所有房間狀況<br>
+                    • <strong><i class="fas fa-eye text-info"></i> 即時監控</strong>：<br>
+                    &nbsp;&nbsp;- 教師可看到每個房間的即時代碼內容<br>
+                    &nbsp;&nbsp;- 監控所有學生的聊天室訊息和討論內容<br>
+                    &nbsp;&nbsp;- 查看學生的程式編輯進度和活動狀況<br>
+                    &nbsp;&nbsp;- 掌握各房間的在線人數和學習動態<br><br>
+                    • <strong><i class="fas fa-bullhorn text-warning"></i> 廣播功能</strong>：<br>
+                    &nbsp;&nbsp;- 向特定房間發送通知訊息<br>
+                    &nbsp;&nbsp;- 向所有學生同時廣播重要公告<br>
+                    &nbsp;&nbsp;- 支援不同類型的訊息（通知、警告、成功）<br>
+                    &nbsp;&nbsp;- 學生端會以醒目方式顯示教師廣播<br><br>
+                    • <strong><i class="fas fa-door-closed text-danger"></i> 房間管理</strong>：<br>
+                    &nbsp;&nbsp;- 課程結束時可統一關閉所有房間<br>
+                    &nbsp;&nbsp;- 管理房間設定和存取權限<br>
+                    &nbsp;&nbsp;- 查看詳細的房間使用統計</p>
+                </div>
+                
+                <div class="tutorial-section">
+                    <h6 class="text-purple"><i class="fas fa-shield-alt"></i> 8. 隱私與安全須知</h6>
+                    <p>• <strong><i class="fas fa-exclamation-triangle text-warning"></i> 重要提醒</strong>：<br>
+                    &nbsp;&nbsp;- 您的所有代碼修改都會被即時同步給房間內其他人<br>
+                    &nbsp;&nbsp;- 聊天室的所有訊息都會被教師監控和記錄<br>
+                    &nbsp;&nbsp;- 教師可以看到您的完整程式編輯過程和內容<br>
+                    &nbsp;&nbsp;- AI助教的所有互動記錄可能被保存用於學習分析<br><br>
+                    • <strong>良好實踐</strong>：<br>
+                    &nbsp;&nbsp;- 保持代碼整潔和適當的註釋<br>
+                    &nbsp;&nbsp;- 在聊天室維持禮貌和專業的討論<br>
+                    &nbsp;&nbsp;- 尊重其他同學的學習進度和貢獻<br>
+                    &nbsp;&nbsp;- 定期保存重要的代碼進度</p>
                 </div>
                 
                 <div class="alert alert-success mt-3">
-                    <i class="fas fa-lightbulb"></i> <strong>學習建議</strong>：
+                    <i class="fas fa-lightbulb"></i> <strong>學習建議與最佳實踐</strong>：
                     <ul class="mb-0 mt-2">
-                        <li>初學者建議先熟悉基本編程功能，再嘗試多人協作</li>
-                        <li>善用AI助教功能學習程式設計技巧和最佳實踐</li>
-                        <li>多在聊天室與同學討論，協作學習效果更佳</li>
-                        <li>定期保存代碼，避免意外丟失進度</li>
-                        <li>有問題隨時向老師求助或使用教學功能</li>
+                        <li><strong>新手入門</strong>：建議先熟悉基本編程和保存功能，再嘗試多人協作</li>
+                        <li><strong>AI助教</strong>：善用AI的四大功能提升程式設計技巧和學習效率</li>
+                        <li><strong>協作溝通</strong>：多在聊天室與同學討論，分享AI分析結果促進互相學習</li>
+                        <li><strong>代碼管理</strong>：定期使用多個槽位保存代碼，避免重要進度丟失</li>
+                        <li><strong>教師互動</strong>：注意教師廣播訊息，主動在聊天室提問和參與討論</li>
+                        <li><strong>學習品質</strong>：專注於代碼品質和學習效果，而非只是完成任務</li>
                     </ul>
+                </div>
+                
+                <div class="alert alert-info mt-2">
+                    <i class="fas fa-question-circle"></i> <strong>需要幫助？</strong><br>
+                    如有任何操作問題，可以：<br>
+                    • 在聊天室向教師或同學求助<br>
+                    • 使用AI助教的「解釋程式」功能了解代碼<br>
+                    • 點擊「操作教學」按鈕隨時重新查看本指南
                 </div>
             </div>
         `;
@@ -455,7 +511,7 @@ class UIManager {
         // 確保AI面板是顯示狀態
         this.switchToAI();
         
-        console.log('✅ 操作教學已顯示');
+        console.log('✅ 詳細操作教學已顯示');
     }
 }
 

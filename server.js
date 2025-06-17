@@ -59,21 +59,17 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
 // 🔧 增強數據庫配置（支援多種環境變數名稱和雲端服務）
 const dbConfig = {
-    host: process.env.MYSQL_HOST || process.env.DB_HOST || process.env.DATABASE_HOST || 'localhost',
-    user: process.env.MYSQL_USER || process.env.MYSQL_USERNAME || process.env.DB_USER || process.env.DATABASE_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || process.env.DATABASE_PASSWORD || (isZeabur ? undefined : ''),
-    database: process.env.MYSQL_DATABASE || process.env.DB_NAME || process.env.DATABASE_NAME || 'python_collaboration',
-    port: parseInt(process.env.MYSQL_PORT || process.env.DB_PORT || process.env.DATABASE_PORT) || 3306,
-    waitForConnections: true,
-    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
-    queueLimit: 0,
-    // 移除過期的 MySQL2 配置參數以避免警告
-    // acquireTimeout: 60000,  // 已移除：MySQL2 不再支持
-    // timeout: 60000,         // 已移除：MySQL2 不再支持  
-    // reconnect: true,        // 已移除：MySQL2 不再支持
-    // 🔧 雲端優化配置
-    ssl: isZeabur || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    charset: 'utf8mb4'
+    host: process.env.MYSQL_HOST || 'localhost',
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQL_DATABASE || 'python_collaboration',
+    port: process.env.MYSQL_PORT || 3306,
+    // 移除過期的配置參數
+    // acquireTimeout: 60000,
+    // timeout: 60000,  
+    // reconnect: true,
+    connectionLimit: parseInt(process.env.DATABASE_POOL_SIZE) || 10,
+    ssl: false
 };
 
 console.log('🔍 數據庫配置調試:');
@@ -3219,3 +3215,81 @@ app.get('/api/ai-config', (req, res) => {
 app.get('/test-ai', (req, res) => {
     res.sendFile(path.join(__dirname, 'test_ai_assistant.html'));
 });
+
+// 修復 AI 助教配置讀取
+async function loadAIConfig() {
+    console.log('⚙️ 載入 AI 助教配置...');
+    
+    try {
+        // 嘗試從 Zeabur 環境變數讀取
+        if (process.env.OPENAI_API_KEY) {
+            console.log('🌐 使用 Zeabur 環境變數配置');
+            aiConfig = {
+                openai_api_key: process.env.OPENAI_API_KEY,
+                model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+                max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 2000,
+                temperature: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.3,
+                timeout: parseInt(process.env.OPENAI_TIMEOUT) || 30000,
+                enabled: true,
+                system_role: "你是一個專業的 Python 程式教學助手，專門協助學生學習 Python 程式設計。",
+                features: {
+                    code_analysis: true,
+                    code_review: true,
+                    debug_assistance: true,
+                    improvement_suggestions: true,
+                    collaboration_guidance: true
+                }
+            };
+            return;
+        }
+
+        // 嘗試從本地 ai_config.json 讀取
+        if (fs.existsSync('./ai_config.json')) {
+            console.log('✅ 使用 ai_config.json 文件配置');
+            const configData = fs.readFileSync('./ai_config.json', 'utf8');
+            aiConfig = JSON.parse(configData);
+            
+            // 確保有 system_role
+            if (!aiConfig.system_role) {
+                aiConfig.system_role = "你是一個專業的 Python 程式教學助手，專門協助學生學習 Python 程式設計。";
+            }
+            
+            // 確保有 features
+            if (!aiConfig.features) {
+                aiConfig.features = {
+                    code_analysis: true,
+                    code_review: true,
+                    debug_assistance: true,
+                    improvement_suggestions: true,
+                    collaboration_guidance: true
+                };
+            }
+        } else {
+            console.log('⚠️ 未找到 AI 配置，使用預設設定');
+            aiConfig = {
+                enabled: false,
+                system_role: "你是一個專業的 Python 程式教學助手，專門協助學生學習 Python 程式設計。",
+                features: {
+                    code_analysis: false,
+                    code_review: false,
+                    debug_assistance: false,
+                    improvement_suggestions: false,
+                    collaboration_guidance: false
+                }
+            };
+        }
+    } catch (error) {
+        console.log('❌ AI 配置載入失敗:', error.message);
+        aiConfig = {
+            enabled: false,
+            system_role: "你是一個專業的 Python 程式教學助手，專門協助學生學習 Python 程式設計。",
+            features: {
+                code_analysis: false,
+                code_review: false,
+                debug_assistance: false,
+                improvement_suggestions: false,
+                collaboration_guidance: false
+            }
+        };
+    }
+}
